@@ -1,4 +1,4 @@
-# Draft Evaluation Plan
+# Evaluation Plan
 
 ## Problem Grounding
 
@@ -21,7 +21,7 @@ Traditionally, team members need to manually report project status, progress, an
 
 With our tool, AI becomes a bridge between project maintainers and staffs. Instead of repeatedly preparing and presenting status updates, maintainers can focus on their work while the AI summarizes relevant project activity and prepares updates for review. As a result, communication shifts from repetitive status reporting to discussions about important changes, blockers, and decisions that require human attention.
 
-## Evaluation Plan Draft
+## Evaluation Plan
 
 ### Success definition:
 
@@ -33,7 +33,7 @@ AI can correctly detects the significant changes in the project which might lie 
 
 ### Method:
 
-- To evaluate this AI, we can directly use this in our processing [repo](https://github.com/cca814/ai-in-the-loop-final-project).
+- To evaluate this tool, we can directly use this in our processing [repo](https://github.com/cca814/ai-in-the-loop-final-project).
 - Directly invite volunteers to try the project.
 
 ### Minimum evidence threshold:
