@@ -1,10 +1,8 @@
-# Part 2 — Draft AI Usage Guidelines
-
----
+# AI Usage Guidelines
 
 ## section 1 — What AI tools we plan to use, and what we will use each for
 
-We decided to use ChatGPT 5.6 / Claude Opus 4.5 to create the initial architecture, and a human always reviews and edits it before it is merged. It cannot git push to the remote repository by itself.
+We decided to use ChatGPT 6 Astra / Claude Opus 5.5 to create the initial architecture, and a human always reviews and edits it before it is merged. It cannot git push to the remote repository by itself.
 
 ---
 
