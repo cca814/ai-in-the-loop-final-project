@@ -32,3 +32,10 @@ We also listed candidate features to consider after the core pipeline works:
 **Outcome:** Both pairs agreed with each other's plans. The Slide Generator pair (Eddy and Ray) will define a data interface for the Intent Supervisor pair to follow. When a PR triggers the GitHub Action, the Intent Supervisor will upload the repository's data in this format to an online database, which the Slide Generator will use as its input.  
 **Who:** All team members.  
 **Why:** To make sure both parts fit together, catch design problems early through cross-review, and agree on shared definitions before each pair builds further.
+
+## 2026-11-11 — Slide Generator architecture discussion
+
+**What:** Discussed using a frontend and backend to provide a web interface for Stage 2, and using Slidev to generate presentations.  
+**Outcome:** Decided to use Next.js deployed on Vercel and Firebase Firestore to store Project State, report drafts, and conversation history. Users will be able to review and manually edit the generated `report.md`, or request changes through an LLM conversation. Once confirmed, the report will be converted into Slidev-compatible `slide.md` and rendered into a presentation using the Slidev CLI.  
+**Who:** Ray and Eddy.  
+**Why:** To let users review and refine report content before generating presentations, while keeping project data and generated reports accessible through a shared web application.
