@@ -1,0 +1,94 @@
+name: Significant Change Checklist Generator
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: significant-change-checklist-main
+  cancel-in-progress: false
+
+jobs:
+  first_stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Resolve main snapshot
+        id: main
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore checklist
+        id: checklist_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: checklists/${{ steps.main.outputs.sha }}.md
+          key: significant-change-checklist-v1-${{ steps.main.outputs.sha }}
+
+      - uses: actions/setup-python@v5
+        if: steps.checklist_cache.outputs.cache-hit != 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Check AI API Key Existence
+        if: steps.checklist_cache.outputs.cache-hit != 'true'
+        id: check_api_key
+        shell: bash
+        run: |
+          if [[ -n "$GEMINI_API_KEY" ]]; then
+            echo "provider=gemini" >> "$GITHUB_OUTPUT"
+
+          elif [[ -n "$OPENAI_API_KEY" ]]; then
+            echo "provider=openai" >> "$GITHUB_OUTPUT"
+
+          elif [[ -n "$ANTHROPIC_API_KEY" ]]; then
+            echo "provider=claude" >> "$GITHUB_OUTPUT"
+
+          else
+            echo "::error::No AI API key configured"
+            exit 1
+          fi
+
+      - name: Generate Significant Change Checklist
+        if: steps.check_api_key.outputs.provider != ''
+        env:
+          PROVIDER: ${{ steps.check_api_key.outputs.provider }}
+        run: python scripts/checklist_generator.py --provider="$PROVIDER" --main-ref=HEAD
+
+      - name: Save checklist cache
+        if: steps.checklist_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: checklists/${{ steps.main.outputs.sha }}.md
+          key: significant-change-checklist-v1-${{ steps.main.outputs.sha }}
+
+      - name: Show existing checklist
+        if: steps.checklist_cache.outputs.cache-hit == 'true'
+        env:
+          MAIN_SHA: ${{ steps.main.outputs.sha }}
+        run: cat "checklists/$MAIN_SHA.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload checklist
+        uses: actions/upload-artifact@v4
+        with:
+          name: significant-change-checklist-${{ steps.main.outputs.sha }}
+          path: checklists/${{ steps.main.outputs.sha }}.md
+          if-no-files-found: error
