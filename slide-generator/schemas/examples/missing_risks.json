@@ -1,0 +1,47 @@
+{
+  "event_id": "gh-run-1001",
+  "project_id": "demo-app",
+  "project_name": "Demo App",
+  "repository": {
+    "full_name": "example-org/demo-app",
+    "url": "https://github.com/example-org/demo-app"
+  },
+  "source_commit_sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  "base_state_id": null,
+  "updated_at": "2026-11-13T16:25:00+08:00",
+  "milestones": [],
+  "features": [
+    {
+      "id": "feature-login",
+      "name": "Login",
+      "status": "done",
+      "summary": "Email login is merged into main.",
+      "source_ref_ids": ["pr-40"]
+    }
+  ],
+  "trigger": {
+    "source_ref_id": "pr-40",
+    "summary": "Added email login.",
+    "feature_ids": ["feature-login"]
+  },
+  "risks": [],
+  "source_refs": [
+    {
+      "id": "pr-40",
+      "type": "pull_request",
+      "url": "https://github.com/example-org/demo-app/pull/40",
+      "title": "Add email login",
+      "number": 40
+    }
+  ],
+  "data_gaps": [
+    {
+      "section": "milestones",
+      "reason": "The repository has no GitHub milestones."
+    },
+    {
+      "section": "risks",
+      "reason": "Risk issues were not collected for this event."
+    }
+  ]
+}

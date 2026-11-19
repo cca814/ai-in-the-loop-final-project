@@ -39,3 +39,10 @@ We also listed candidate features to consider after the core pipeline works:
 **Outcome:** Decided to use Next.js deployed on Vercel and Firebase Firestore to store Project State, report drafts, and conversation history. Users will be able to review and manually edit the generated `report.md`, or request changes through an LLM conversation. Once confirmed, the report will be converted into Slidev-compatible `slide.md` and rendered into a presentation using the Slidev CLI.  
 **Who:** Ray and Eddy.  
 **Why:** To let users review and refine report content before generating presentations, while keeping project data and generated reports accessible through a shared web application.
+
+## 2026-11-18 — Project State schema
+
+**What:** Defined the Project State schema that the Intent Supervisor uses to submit project data to the Slide Generator.  
+**Outcome:** The schema and example data are in `slide-generator/schemas/`.  
+**Who:** Eddy, in discussion with all team members.  
+**Why:** To keep both pairs working from the same data format, so the Intent Supervisor's output can be used directly by the Slide Generator.

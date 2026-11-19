@@ -1,0 +1,93 @@
+{
+  "event_id": "gh-run-1002",
+  "project_id": "demo-app",
+  "project_name": "Demo App",
+  "repository": {
+    "full_name": "example-org/demo-app",
+    "url": "https://github.com/example-org/demo-app"
+  },
+  "source_commit_sha": "3f2a9c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+  "base_state_id": "gh-run-1001",
+  "updated_at": "2026-11-15T10:35:00+08:00",
+  "generator": {
+    "name": "intent-supervisor",
+    "version": "0.1.0",
+    "model": "example-model"
+  },
+  "milestones": [
+    {
+      "id": "milestone-mvp",
+      "name": "MVP",
+      "status": "in_progress",
+      "target_date": "2026-12-15",
+      "summary": "Core report editing flow without AI.",
+      "source_ref_ids": ["doc-roadmap"]
+    }
+  ],
+  "features": [
+    {
+      "id": "feature-login",
+      "name": "Login",
+      "status": "done",
+      "summary": "Email login is merged into main.",
+      "milestone_id": "milestone-mvp",
+      "source_ref_ids": ["pr-40"]
+    },
+    {
+      "id": "feature-report-editor",
+      "name": "Report editor",
+      "status": "in_progress",
+      "summary": "Markdown preview is merged. Saving report versions is on the roadmap but not merged yet.",
+      "milestone_id": "milestone-mvp",
+      "source_ref_ids": ["pr-41", "doc-roadmap"]
+    }
+  ],
+  "trigger": {
+    "source_ref_id": "pr-41",
+    "summary": "Added Markdown preview to the report editor.",
+    "feature_ids": ["feature-report-editor"]
+  },
+  "risks": [
+    {
+      "id": "risk-export-env",
+      "kind": "risk",
+      "title": "PDF export environment not verified",
+      "description": "Export needs Chromium in the worker container, which has not been tested yet.",
+      "impact": "Presentation download may be delayed.",
+      "severity": "medium",
+      "source_ref_ids": ["issue-7"]
+    }
+  ],
+  "source_refs": [
+    {
+      "id": "pr-40",
+      "type": "pull_request",
+      "url": "https://github.com/example-org/demo-app/pull/40",
+      "title": "Add email login",
+      "number": 40
+    },
+    {
+      "id": "pr-41",
+      "type": "pull_request",
+      "url": "https://github.com/example-org/demo-app/pull/41",
+      "title": "Add Markdown preview",
+      "number": 41
+    },
+    {
+      "id": "issue-7",
+      "type": "issue",
+      "url": "https://github.com/example-org/demo-app/issues/7",
+      "title": "Verify Chromium in export worker",
+      "number": 7,
+      "status": "open"
+    },
+    {
+      "id": "doc-roadmap",
+      "type": "document",
+      "url": "https://github.com/example-org/demo-app/blob/main/ROADMAP.md",
+      "title": "Roadmap",
+      "path": "ROADMAP.md"
+    }
+  ],
+  "data_gaps": []
+}
