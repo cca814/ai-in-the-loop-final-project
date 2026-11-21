@@ -4,9 +4,24 @@ import { readFileSync } from 'node:fs';
 import { generateReport } from './index.js';
 import { prepareState } from './state.js';
 import { createClient, createOpenAIClient } from './llm.js';
+import { reportToSlides } from '../slide-export/convert.js';
 
 const example = name => JSON.parse(readFileSync(new URL(`../schemas/examples/${name}.json`, import.meta.url), 'utf8'));
 const pages = state => ['Project Overview', 'Feature Progress', 'Recent Changes', 'Risks and Issues'].map(title => ({ title, bullets: ['Evidence supplied'], script: 'Review the snapshot.', source_ids: [state.trigger.source_ref_id] }));
+
+test('sources are optional per page while supplied identifiers remain validated', async () => {
+  const state = example('normal');
+  const sections = pages(state).slice(0, 3);
+  delete sections[0].source_ids;
+  sections[1].source_ids = [];
+  const report = await generateReport(state, { complete: async () => JSON.stringify({ pages: sections }) });
+  assert.equal((report.match(/## Speaker Notes/g) || []).length, 3);
+  assert.equal((report.match(/## Sources/g) || []).length, 1);
+  assert.equal((reportToSlides(report).match(/<!--/g) || []).length, 3);
+  for (const source_ids of [['invented'], null, 'repository']) {
+    await assert.rejects(generateReport(state, { maxCorrectionRetries: 0, complete: async () => JSON.stringify({ pages: [{ ...sections[0], source_ids }] }) }), error => error.code === 'GENERATION_SOURCE_INVALID');
+  }
+});
 
 for (const name of ['normal', 'missing_risks', 'feature_done']) {
   test(`generates a sourced report for ${name}`, async () => {
@@ -41,6 +56,86 @@ test('rejects invalid evidence and malformed model output', async () => {
   badPages[0].source_ids = ['invented'];
   await assert.rejects(generateReport(valid, { complete: async () => JSON.stringify({ pages: badPages }) }), /Unknown response source/);
   await assert.rejects(generateReport(valid, { complete: async () => 'not JSON' }), /valid LLM JSON/);
+});
+
+test('requested structure can have one custom section and still convert to Slidev', async () => {
+  const state = example('normal');
+  const focus = '給主管的簡短更新，只要「編輯流程改善」，不要總覽或技術細節';
+  const report = await generateReport(state, { focus, complete: async messages => {
+    const input = JSON.parse(messages[1].content);
+    assert.equal(input.generation_request, focus);
+    assert.deepEqual(input.state, state);
+    assert.match(messages[0].content, /there are no required business-section titles/);
+    assert.ok(!messages[0].content.includes('keeping all four required'));
+    return JSON.stringify({ pages: [{ title: '編輯流程改善', bullets: ['報告編輯已加入預覽，方便在修改時確認呈現效果。'], script: '目前可在編輯報告時預覽內容，報告版本儲存仍在規劃中。', source_ids: ['pr-41'] }] });
+  } });
+  assert.match(report, /^# 編輯流程改善/);
+  assert.ok(!report.includes('# Project Overview'));
+  const slides = reportToSlides(report);
+  assert.match(slides, /# 編輯流程改善/);
+  assert.match(slides, /github.com\/example-org\/demo-app\/pull\/41/);
+});
+
+test('default briefing instructions target a supervisor without enforcing a section count', async () => {
+  const state = example('normal');
+  const report = await generateReport(state, { complete: async messages => {
+    assert.match(messages[0].content, /engineer reporting progress to a supervisor/);
+    assert.match(messages[0].content, /Default to Traditional Chinese/);
+    assert.match(messages[0].content, /not mandatory headings or a fixed section count/);
+    assert.match(messages[0].content, /main\/master branch names/);
+    assert.match(messages[0].content, /Completion of implementation is not proof of release/);
+    return JSON.stringify({ pages: [
+      { title: '近期成果', bullets: ['報告編輯已加入預覽。'], script: '編輯流程已新增預覽功能。', source_ids: ['pr-41'] },
+      { title: '待確認事項', bullets: ['簡報下載所需的執行環境尚未驗證。'], script: '目前仍需確認簡報下載的執行環境，尚不能承諾交付時間。', source_ids: ['issue-7'] },
+    ] });
+  } });
+  assert.equal((report.match(/^# /gm) || []).length, 2);
+  assert.match(report, /待確認事項/);
+  await assert.rejects(generateReport(state, { complete: async () => JSON.stringify({ pages: [] }) }), /nonempty pages/);
+});
+
+test('accepts paragraph-based speaker notes and preserves Slidev compatibility', async () => {
+  const state = example('normal');
+  const result = { pages: [{ title: '近期成果', bullets: ['已加入報告預覽。'], script: '報告已可預覽。\n\n版本儲存仍在規劃中。', source_ids: ['pr-41'] }] };
+  const report = await generateReport(state, { complete: async () => JSON.stringify(result) });
+  assert.match(report, /報告已可預覽。\n\n版本儲存仍在規劃中。/);
+  assert.match(reportToSlides(report), /<!--\n報告已可預覽。/);
+});
+
+test('corrects a bad source once using the original evidence and exact allowed identifiers', async () => {
+  const state = example('normal');
+  const original = structuredClone(state);
+  let calls = 0;
+  const report = await generateReport(state, { focus: '匯報最近進度跟碰到的問題', complete: async messages => {
+    calls++;
+    const output = { pages: [{ title: '近期進度', bullets: ['報告編輯已加入預覽。'], script: '目前能預覽報告。', source_ids: calls === 1 ? ['made-up-source'] : ['pr-41'] }] };
+    if (calls === 2) {
+      const correction = JSON.parse(messages.at(-1).content);
+      assert.equal(correction.correction_required, 'GENERATION_SOURCE_INVALID');
+      assert.equal(correction.page, 1);
+      assert.equal(correction.field, 'source_ids');
+      assert.ok(correction.allowed_source_ids.includes('pr-41'));
+      assert.ok(!JSON.stringify(correction).includes('made-up-source'));
+      assert.deepEqual(JSON.parse(messages[1].content).state, state);
+    }
+    return JSON.stringify(output);
+  } });
+  assert.equal(calls, 2);
+  assert.deepEqual(state, original);
+  assert.match(report, /pull\/41/);
+});
+
+test('stops after one content correction and never resends provider errors', async () => {
+  const state = example('normal');
+  let calls = 0;
+  await assert.rejects(generateReport(state, { complete: async () => {
+    calls++;
+    return JSON.stringify({ pages: [{ title: 'Report', bullets: ['Fact'], script: ['Wrong type'], source_ids: ['pr-41'] }] });
+  } }), error => error.code === 'GENERATION_CONTENT_INVALID' && error.field === 'script');
+  assert.equal(calls, 2);
+  let providerCalls = 0;
+  await assert.rejects(generateReport(state, { complete: async () => { providerCalls++; throw new Error('Provider unavailable'); } }), /Provider unavailable/);
+  assert.equal(providerCalls, 1);
 });
 
 test('LLM adapter uses injected transport and does not expose error response bodies', async () => {

@@ -1,0 +1,89 @@
+{
+  "repository": "sindresorhus/p-limit",
+  "pr": {
+    "number": 4,
+    "url": "https://github.com/sindresorhus/p-limit/pull/4",
+    "merged_at": "2018-01-04T00:21:27Z",
+    "base_ref": "master",
+    "merge_commit_sha": "e26f523abacccfbf4125de72de1e242d1cc884e8",
+    "title_at_commit": "Use p-try to work with sync functions and throwing functions (#4)"
+  },
+  "commit": {
+    "sha": "e26f523abacccfbf4125de72de1e242d1cc884e8",
+    "tree_sha": "aea82c4d6f34886a9dfcec0ea5819aebed8be6c3",
+    "parents": [
+      "276b0aeef73ac9fe0b80622d8261a2bbe4f9f74c"
+    ],
+    "message": "Use p-try to work with sync functions and throwing functions (#4)"
+  },
+  "files": {
+    ".editorconfig": {
+      "sha": "98a761ddc9da6bc5c55a5904797eccdec078cd65",
+      "mode": "100644",
+      "content": "root = true\n\n[*]\nindent_style = tab\nend_of_line = lf\ncharset = utf-8\ntrim_trailing_whitespace = true\ninsert_final_newline = true\n\n[{package.json,*.yml}]\nindent_style = space\nindent_size = 2\n"
+    },
+    ".gitattributes": {
+      "sha": "391f0a4e4b04a8b63e39431a8444e58f84214805",
+      "mode": "100644",
+      "content": "* text=auto\n*.js text eol=lf\n"
+    },
+    ".gitignore": {
+      "sha": "3c3629e647f5ddf82548912e337bea9826b434af",
+      "mode": "100644",
+      "content": "node_modules\n"
+    },
+    ".travis.yml": {
+      "sha": "97519af933c541344f54beaf1890565c68f14365",
+      "mode": "100644",
+      "content": "language: node_js\nnode_js:\n  - '6'\n  - '4'\n"
+    },
+    "index.js": {
+      "sha": "8767db1ca7503d51d62d0fb8068ae862882aebbd",
+      "mode": "100644",
+      "content": "'use strict';\nconst pTry = require('p-try');\n\nmodule.exports = concurrency => {\n\tif (concurrency < 1) {\n\t\tthrow new TypeError('Expected `concurrency` to be a number from 1 and up');\n\t}\n\n\tconst queue = [];\n\tlet activeCount = 0;\n\n\tconst next = () => {\n\t\tactiveCount--;\n\n\t\tif (queue.length > 0) {\n\t\t\tqueue.shift()();\n\t\t}\n\t};\n\n\treturn fn => new Promise((resolve, reject) => {\n\t\tconst run = () => {\n\t\t\tactiveCount++;\n\n\t\t\tpTry(() => fn()).then(\n\t\t\t\tval => {\n\t\t\t\t\tresolve(val);\n\t\t\t\t\tnext();\n\t\t\t\t},\n\t\t\t\terr => {\n\t\t\t\t\treject(err);\n\t\t\t\t\tnext();\n\t\t\t\t}\n\t\t\t);\n\t\t};\n\n\t\tif (activeCount < concurrency) {\n\t\t\trun();\n\t\t} else {\n\t\t\tqueue.push(run);\n\t\t}\n\t});\n};\n"
+    },
+    "license": {
+      "sha": "654d0bfe943437d43242325b1fbcff5f400d84ee",
+      "mode": "100644",
+      "content": "The MIT License (MIT)\n\nCopyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n"
+    },
+    "package.json": {
+      "sha": "57e3d64b724fa34486142601757f2bd229b614cd",
+      "mode": "100644",
+      "content": "{\n  \"name\": \"p-limit\",\n  \"version\": \"1.1.0\",\n  \"description\": \"Run multiple promise-returning & async functions with limited concurrency\",\n  \"license\": \"MIT\",\n  \"repository\": \"sindresorhus/p-limit\",\n  \"author\": {\n    \"name\": \"Sindre Sorhus\",\n    \"email\": \"sindresorhus@gmail.com\",\n    \"url\": \"sindresorhus.com\"\n  },\n  \"engines\": {\n    \"node\": \">=4\"\n  },\n  \"scripts\": {\n    \"test\": \"xo && ava\"\n  },\n  \"files\": [\n    \"index.js\"\n  ],\n  \"keywords\": [\n    \"promise\",\n    \"limit\",\n    \"limited\",\n    \"concurrency\",\n    \"throttle\",\n    \"throat\",\n    \"rate\",\n    \"batch\",\n    \"ratelimit\",\n    \"task\",\n    \"queue\",\n    \"async\",\n    \"await\",\n    \"promises\",\n    \"bluebird\"\n  ],\n  \"dependencies\": {\n    \"p-try\": \"^1.0.0\"\n  },\n  \"devDependencies\": {\n    \"ava\": \"*\",\n    \"delay\": \"^1.3.1\",\n    \"in-range\": \"^1.0.0\",\n    \"random-int\": \"^1.0.0\",\n    \"time-span\": \"^1.0.0\",\n    \"xo\": \"*\"\n  },\n  \"xo\": {\n    \"esnext\": true\n  }\n}\n"
+    },
+    "readme.md": {
+      "sha": "c7a10deb6870eeec35bf1137bbe5fe7485205d76",
+      "mode": "100644",
+      "content": "# p-limit [![Build Status](https://travis-ci.org/sindresorhus/p-limit.svg?branch=master)](https://travis-ci.org/sindresorhus/p-limit)\n\n> Run multiple promise-returning & async functions with limited concurrency\n\n\n## Install\n\n```\n$ npm install --save p-limit\n```\n\n\n## Usage\n\n```js\nconst pLimit = require('p-limit');\n\nconst limit = pLimit(1);\n\nconst input = [\n\tlimit(() => fetchSomething('foo')),\n\tlimit(() => fetchSomething('bar')),\n\tlimit(() => doSomething())\n];\n\n// only one promise is run at once\nPromise.all(input).then(result => {\n\tconsole.log(result);\n});\n```\n\n\n## API\n\n### pLimit(concurrency)\n\nReturns a `limit` function.\n\n#### concurrency\n\nType: `number`<br>\nMinimum: `1`\n\nConcurrency limit.\n\n### limit(fn)\n\nReturns the promise returned by calling `fn`.\n\n#### fn\n\nType: `Function`\n\nPromise-returning/async function.\n\n\n## Related\n\n- [p-queue](https://github.com/sindresorhus/p-queue) - Promise queue with concurrency control\n- [p-throttle](https://github.com/sindresorhus/p-throttle) - Throttle promise-returning & async functions\n- [p-debounce](https://github.com/sindresorhus/p-debounce) - Debounce promise-returning & async functions\n- [p-all](https://github.com/sindresorhus/p-all) - Run promise-returning & async functions concurrently with optional limited concurrency\n- [More…](https://github.com/sindresorhus/promise-fun)\n\n\n## License\n\nMIT © [Sindre Sorhus](https://sindresorhus.com)\n"
+    },
+    "test.js": {
+      "sha": "f16c85593d8ee25fb79117d4c3dd8c49d6efad00",
+      "mode": "100644",
+      "content": "import test from 'ava';\nimport delay from 'delay';\nimport inRange from 'in-range';\nimport timeSpan from 'time-span';\nimport randomInt from 'random-int';\nimport m from './';\n\ntest('concurrency: 1', async t => {\n\tconst input = [\n\t\t[10, 300],\n\t\t[20, 200],\n\t\t[30, 100]\n\t];\n\n\tconst end = timeSpan();\n\tconst limit = m(1);\n\tconst mapper = ([val, ms]) => limit(() => delay(ms).then(() => val));\n\n\tt.deepEqual(await Promise.all(input.map(mapper)), [10, 20, 30]);\n\tt.true(inRange(end(), 590, 650));\n});\n\ntest('concurrency: 4', async t => {\n\tconst concurrency = 5;\n\tlet running = 0;\n\n\tconst limit = m(concurrency);\n\n\tconst input = Array(100).fill(0).map(() => limit(async () => {\n\t\trunning++;\n\t\tt.true(running <= concurrency);\n\t\tawait delay(randomInt(30, 200));\n\t\trunning--;\n\t}));\n\n\tawait Promise.all(input);\n});\n\ntest('non-promise returning function', async t => {\n\tawait t.notThrows(async () => {\n\t\tconst limit = m(1);\n\t\tawait limit(() => null);\n\t});\n});\n\ntest('continues after sync throw', async t => {\n\tconst limit = m(1);\n\tlet ran = false;\n\n\tconst promises = [\n\t\tlimit(() => {\n\t\t\tthrow new Error('err');\n\t\t}),\n\t\tlimit(() => {\n\t\t\tran = true;\n\t\t})\n\t];\n\n\tawait Promise.all(promises).catch(() => {});\n\n\tt.is(ran, true);\n});\n"
+    }
+  },
+  "changes": [
+    {
+      "path": "index.js",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 1,
+      "patch": "@@ -1,4 +1,6 @@\n 'use strict';\n+const pTry = require('p-try');\n+\n module.exports = concurrency => {\n \tif (concurrency < 1) {\n \t\tthrow new TypeError('Expected `concurrency` to be a number from 1 and up');\n@@ -19,7 +21,7 @@ module.exports = concurrency => {\n \t\tconst run = () => {\n \t\t\tactiveCount++;\n \n-\t\t\tfn().then(\n+\t\t\tpTry(() => fn()).then(\n \t\t\t\tval => {\n \t\t\t\t\tresolve(val);\n \t\t\t\t\tnext();"
+    },
+    {
+      "path": "package.json",
+      "status": "modified",
+      "additions": 3,
+      "deletions": 0,
+      "patch": "@@ -35,6 +35,9 @@\n     \"promises\",\n     \"bluebird\"\n   ],\n+  \"dependencies\": {\n+    \"p-try\": \"^1.0.0\"\n+  },\n   \"devDependencies\": {\n     \"ava\": \"*\",\n     \"delay\": \"^1.3.1\","
+    },
+    {
+      "path": "test.js",
+      "status": "modified",
+      "additions": 25,
+      "deletions": 0,
+      "patch": "@@ -35,3 +35,28 @@ test('concurrency: 4', async t => {\n \n \tawait Promise.all(input);\n });\n+\n+test('non-promise returning function', async t => {\n+\tawait t.notThrows(async () => {\n+\t\tconst limit = m(1);\n+\t\tawait limit(() => null);\n+\t});\n+});\n+\n+test('continues after sync throw', async t => {\n+\tconst limit = m(1);\n+\tlet ran = false;\n+\n+\tconst promises = [\n+\t\tlimit(() => {\n+\t\t\tthrow new Error('err');\n+\t\t}),\n+\t\tlimit(() => {\n+\t\t\tran = true;\n+\t\t})\n+\t];\n+\n+\tawait Promise.all(promises).catch(() => {});\n+\n+\tt.is(ran, true);\n+});"
+    }
+  ]
+}

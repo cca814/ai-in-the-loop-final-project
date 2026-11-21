@@ -1,0 +1,153 @@
+{
+  "event_id": "p-limit-pr-7-587c309fdb72",
+  "project_id": "p-limit",
+  "project_name": "p-limit",
+  "repository": {
+    "full_name": "sindresorhus/p-limit",
+    "url": "https://github.com/sindresorhus/p-limit"
+  },
+  "source_commit_sha": "587c309fdb72cac75e24817a3bbde2e9473aa18d",
+  "base_state_id": "p-limit-pr-4-e26f523abacc",
+  "updated_at": "2018-06-06T15:59:27Z",
+  "generator": {
+    "name": "historical-replay-fixture",
+    "version": "1.0.0"
+  },
+  "milestones": [],
+  "features": [
+    {
+      "id": "feature-core",
+      "name": "Promise 併發限制",
+      "status": "done",
+      "summary": "以佇列限制同時執行的工作，回傳 Promise。當時 package.json 宣告版本 1.2.0、Node.js >=4、CommonJS；這是檔案宣告，非 npm 發布或相容性測試結果。",
+      "source_ref_ids": [
+        "pr-7",
+        "doc-index-js",
+        "doc-readme-md",
+        "doc-package-json"
+      ]
+    },
+    {
+      "id": "feature-docs",
+      "name": "使用說明",
+      "status": "done",
+      "summary": "README 提供安裝方式、使用範例及當時公開 API 說明。",
+      "source_ref_ids": [
+        "pr-1",
+        "doc-readme-md"
+      ]
+    },
+    {
+      "id": "feature-tests",
+      "name": "自動化測試設定",
+      "status": "done",
+      "summary": "當時 scripts.test 為 xo && ava；包含 test.js。本次僅讀取測試程式，未執行該版本的測試或重建歷史 CI 結果。",
+      "source_ref_ids": [
+        "pr-4",
+        "doc-package-json",
+        "doc-test-js"
+      ]
+    },
+    {
+      "id": "feature-ci",
+      "name": "CI 工作流程設定",
+      "status": "unknown",
+      "summary": "當時 repository 包含 .travis.yml 測試設定；未取得當時的執行結果。 當時檔案可確認此能力，但本次回放未取得對應的已合併 PR 證據，故不標記 done。",
+      "source_ref_ids": [
+        "doc--travis-yml"
+      ]
+    },
+    {
+      "id": "feature-sync-functions",
+      "name": "同步回傳與拋錯處理",
+      "status": "done",
+      "summary": "限流工作經 pTry 或 async 包裝轉成 Promise，對應同步回傳值及拋錯。",
+      "source_ref_ids": [
+        "pr-7",
+        "doc-index-js",
+        "doc-test-js"
+      ]
+    }
+  ],
+  "trigger": {
+    "source_ref_id": "pr-7",
+    "summary": "直接將函式交給 pTry，移除額外匿名函式包裝。",
+    "feature_ids": [
+      "feature-core",
+      "feature-sync-functions"
+    ]
+  },
+  "risks": [],
+  "source_refs": [
+    {
+      "id": "pr-7",
+      "type": "pull_request",
+      "number": 7,
+      "url": "https://github.com/sindresorhus/p-limit/pull/7",
+      "title": "Avoid constructing extra anonymous function (#7)"
+    },
+    {
+      "id": "doc-index-js",
+      "type": "document",
+      "path": "index.js",
+      "title": "index.js",
+      "url": "https://github.com/sindresorhus/p-limit/blob/587c309fdb72cac75e24817a3bbde2e9473aa18d/index.js"
+    },
+    {
+      "id": "doc-readme-md",
+      "type": "document",
+      "path": "readme.md",
+      "title": "readme.md",
+      "url": "https://github.com/sindresorhus/p-limit/blob/587c309fdb72cac75e24817a3bbde2e9473aa18d/readme.md"
+    },
+    {
+      "id": "doc-package-json",
+      "type": "document",
+      "path": "package.json",
+      "title": "package.json",
+      "url": "https://github.com/sindresorhus/p-limit/blob/587c309fdb72cac75e24817a3bbde2e9473aa18d/package.json"
+    },
+    {
+      "id": "pr-1",
+      "type": "pull_request",
+      "number": 1,
+      "url": "https://github.com/sindresorhus/p-limit/pull/1",
+      "title": "remove unused dependency (#1)"
+    },
+    {
+      "id": "pr-4",
+      "type": "pull_request",
+      "number": 4,
+      "url": "https://github.com/sindresorhus/p-limit/pull/4",
+      "title": "Use p-try to work with sync functions and throwing functions (#4)"
+    },
+    {
+      "id": "doc-test-js",
+      "type": "document",
+      "path": "test.js",
+      "title": "test.js",
+      "url": "https://github.com/sindresorhus/p-limit/blob/587c309fdb72cac75e24817a3bbde2e9473aa18d/test.js"
+    },
+    {
+      "id": "doc--travis-yml",
+      "type": "document",
+      "path": ".travis.yml",
+      "title": ".travis.yml",
+      "url": "https://github.com/sindresorhus/p-limit/blob/587c309fdb72cac75e24817a3bbde2e9473aa18d/.travis.yml"
+    }
+  ],
+  "data_gaps": [
+    {
+      "section": "milestones",
+      "reason": "本次未重建當時 GitHub milestone 狀態；repository 檔案未提供可據以填入的專案里程碑與期限，不以版本號推測。"
+    },
+    {
+      "section": "features",
+      "reason": "僅根據當時完整檔案、此次 merge patch 與上一版 State 重建已觀察到的能力；未重建當時 open issues/PR 的規劃清單。缺少已合併 PR 證據的既有能力標記 unknown，不表示實作不存在。"
+    },
+    {
+      "section": "risks",
+      "reason": "未重建當時 issues、討論、CI 結果或完整安全評估。僅列出可由當時程式碼推導的限制；空陣列不表示當時沒有風險。"
+    }
+  ]
+}

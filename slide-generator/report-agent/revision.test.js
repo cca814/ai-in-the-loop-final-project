@@ -3,13 +3,53 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { reviseReport } from './revision.js';
 import { createClient } from './llm.js';
+import { parseReport } from './report-format.js';
 
 const state = JSON.parse(readFileSync(new URL('../schemas/examples/normal.json', import.meta.url), 'utf8'));
 const reply = result => async () => JSON.stringify(result);
 
+const page = (title, text) => `# ${title}\n\n- ${text}\n\n## Speaker Notes\n\n${text}`;
+
+test('adding a page without notes triggers correction against original draft and preserves manual text', async () => {
+  const first = page('Summary', 'Manual wording stays.');
+  const last = page('Details', 'Existing detail.');
+  const report = `${first}\n\n---\n\n${last}`;
+  let calls = 0;
+  const result = await reviseReport({ state, report, request: 'Split Details into two pages' }, { complete: async messages => {
+    calls++;
+    assert.equal(JSON.parse(messages[1].content).current_report, report);
+    if (calls === 1) return JSON.stringify({ changes: [{ old: last, new: `${last}\n\n# Extra\n\n- Existing detail.` }], message: 'Split.' });
+    const correction = JSON.parse(messages.at(-1).content);
+    assert.equal(correction.correction_required, 'REVISION_STRUCTURE_INVALID');
+    assert.match(correction.detail, /3/);
+    return JSON.stringify({ changes: [{ old: last, new: `${last}\n\n${page('Extra', 'Existing detail.')}` }], message: 'Split with notes.' });
+  } });
+  assert.equal(calls, 2);
+  assert.ok(result.report.startsWith(first));
+  assert.equal(parseReport(result.report).length, 3);
+  assert.match(result.report, /---\n\n# Extra/);
+  assert.ok(!result.report.includes('## Sources'));
+});
+
+test('merging pages keeps one script and rejects persistent missing or duplicate notes', async () => {
+  const report = `${page('One', 'First fact.')}\n\n---\n\n${page('Two', 'Second fact.')}`;
+  const merged = page('Combined', 'First fact. Second fact.');
+  const result = await reviseReport({ state, report, request: 'Merge into one page' }, { complete: reply({ changes: [{ old: report, new: merged }], message: 'Merged.' }) });
+  assert.equal(parseReport(result.report).length, 1);
+  for (const invalid of ['# Combined\n\n- First fact.', `${merged}\n\n## Speaker Notes\nDuplicate.`, 'All headings removed']) {
+    let calls = 0;
+    await assert.rejects(reviseReport({ state, report, request: 'Merge pages' }, { complete: async () => {
+      calls++;
+      return JSON.stringify({ changes: [{ old: report, new: invalid }], message: 'Merged.' });
+    } }), error => error.code === 'REVISION_STRUCTURE_INVALID');
+    assert.equal(calls, 2);
+    assert.equal(parseReport(report).length, 2);
+  }
+});
+
 test('edits the latest manually edited report and passes context without changing state', async () => {
   const original = structuredClone(state);
-  const report = '# Overview\nManual edit\n\n# Other\nKeep this.\n';
+  const report = '# Overview\nManual edit\n\n## Speaker Notes\nOverview note.\n\n---\n\n# Other\nKeep this.\n\n## Speaker Notes\nOther note.\n';
   const history = [{ role: 'user', content: 'Make it shorter' }, { role: 'assistant', content: 'Done' }];
   const result = await reviseReport({ state, report, request: 'Change Manual edit to Edited', history }, { complete: async messages => {
     const input = JSON.parse(messages[1].content);
@@ -17,7 +57,7 @@ test('edits the latest manually edited report and passes context without changin
     assert.deepEqual(input.conversation_history, history);
     return JSON.stringify({ changes: [{ old: 'Manual edit', new: 'Edited' }], message: 'Changed.' });
   } });
-  assert.equal(result.report, '# Overview\nEdited\n\n# Other\nKeep this.\n');
+  assert.equal(result.report, report.replace('Manual edit', 'Edited'));
   assert.deepEqual(state, original);
 });
 
@@ -41,17 +81,65 @@ test('two Gemini turns keep manual edits and forward history through the provide
     const context = JSON.parse(body.contents[0].parts[0].text);
     calls++;
     if (calls === 1) {
-      assert.equal(context.current_report, '# Notes\nOriginal\n# Other\nKeep\n');
+      assert.equal(context.current_report, '# Notes\nOriginal\n\n## Speaker Notes\nFirst note.\n\n---\n\n# Other\nKeep\n\n## Speaker Notes\nSecond note.\n');
       assert.deepEqual(context.conversation_history, []);
       return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ changes: [{ old: 'Original', new: 'Shorter' }], message: 'Shortened.' }) }] } }] }) };
     }
-    assert.equal(context.current_report, '# Notes\nShorter\n# Other\nManual edit\n');
+    assert.equal(context.current_report, '# Notes\nShorter\n\n## Speaker Notes\nFirst note.\n\n---\n\n# Other\nManual edit\n\n## Speaker Notes\nSecond note.\n');
     assert.deepEqual(context.conversation_history, [{ role: 'user', content: 'Shorten notes' }, { role: 'assistant', content: 'Shortened.' }]);
     return { ok: true, json: async () => ({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify({ changes: [{ old: 'Shorter', new: 'Concise' }], message: 'Reworded.' }) }] } }] }) };
   } });
-  const first = await reviseReport({ state, report: '# Notes\nOriginal\n# Other\nKeep\n', request: 'Shorten notes' }, { complete });
+  const first = await reviseReport({ state, report: '# Notes\nOriginal\n\n## Speaker Notes\nFirst note.\n\n---\n\n# Other\nKeep\n\n## Speaker Notes\nSecond note.\n', request: 'Shorten notes' }, { complete });
   const manualReport = first.report.replace('Keep', 'Manual edit');
   const second = await reviseReport({ state, report: manualReport, request: 'Reword the previous edit', history: [{ role: 'user', content: 'Shorten notes' }, { role: 'assistant', content: first.message }] }, { complete });
-  assert.equal(second.report, '# Notes\nConcise\n# Other\nManual edit\n');
+  assert.equal(second.report, '# Notes\nConcise\n\n## Speaker Notes\nFirst note.\n\n---\n\n# Other\nManual edit\n\n## Speaker Notes\nSecond note.\n');
   assert.equal(calls, 2);
+});
+
+test('whole-report translation rejects a false already-translated response and corrects once', async () => {
+  const report = '# Project Overview\n\n- The project is using a queue.\n\n## Speaker Notes\n\n這是中文講稿。\n\n## Sources\n\n- [Source](https://example.com/source)';
+  const translated = '# 專案概述\n\n- 此專案使用佇列。\n\n## 講者備忘\n\n這是中文講稿。\n\n## 來源\n\n- [Source](https://example.com/source)';
+  let calls = 0;
+  const result = await reviseReport({ state, report, request: '報告內容翻譯成繁體中文' }, { complete: async messages => {
+    calls++;
+    if (calls === 1) return JSON.stringify({ changes: [], message: 'Already in Traditional Chinese.' });
+    assert.equal(JSON.parse(messages.at(-1).content).correction_required, 'REVISION_TRANSLATION_INCOMPLETE');
+    assert.equal(JSON.parse(messages[1].content).current_report, report);
+    return JSON.stringify({ changes: [{ old: report, new: translated }], message: '已翻譯標題、重點及講稿。' });
+  } });
+  assert.equal(calls, 2);
+  assert.equal(result.report, translated);
+  assert.equal(result.changed, true);
+});
+
+test('partial translation cannot pass by translating only titles and notes', async () => {
+  const report = '# 專案概述\n\n- The latest recorded merge is pull request 109.\n\n## 講稿\n\n中文講稿。';
+  let calls = 0;
+  await assert.rejects(reviseReport({ state, report, request: '翻譯成繁體中文' }, { complete: async () => {
+    calls++;
+    return JSON.stringify({ changes: [], message: 'Already translated.' });
+  } }), error => error.code === 'REVISION_TRANSLATION_INCOMPLETE');
+  assert.equal(calls, 2);
+});
+
+test('notes-only translation can leave English page titles unchanged', async () => {
+  const report = '# Project Overview\n\n- Keep English bullets\n\n## Speaker Notes\n\nOriginal note.';
+  const result = await reviseReport({ state, report, request: '僅將講稿翻譯成繁體中文' }, { complete: reply({ changes: [{ old: 'Original note.', new: '中文講稿。' }], message: 'Updated notes.' }) });
+  assert.match(result.report, /# Project Overview/);
+  assert.match(result.report, /中文講稿/);
+});
+
+test('exact-match correction uses the original report, and provider errors are not resent', async () => {
+  let calls = 0;
+  const result = await reviseReport({ state, report: 'Original\nManual', request: 'Reword' }, { complete: async messages => {
+    calls++;
+    if (calls === 1) return JSON.stringify({ changes: [{ old: 'Absent text', new: 'Oops' }], message: 'Changed' });
+    assert.equal(JSON.parse(messages.at(-1).content).correction_required, 'REVISION_MATCH_FAILED');
+    return JSON.stringify({ changes: [{ old: 'Original', new: 'Updated' }], message: 'Changed' });
+  } });
+  assert.equal(result.report, 'Updated\nManual');
+  assert.equal(calls, 2);
+  let networkCalls = 0;
+  await assert.rejects(reviseReport({ state, report: 'Original', request: 'Reword' }, { complete: async () => { networkCalls++; throw new Error('Network failure'); } }), /Network failure/);
+  assert.equal(networkCalls, 1);
 });

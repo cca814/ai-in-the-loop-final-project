@@ -1,0 +1,179 @@
+{
+  "repository": "sindresorhus/p-limit",
+  "collection_time_utc": "2026-11-21 09:38:35 UTC",
+  "source": "https://api.github.com/repos/sindresorhus/p-limit/pulls?state=closed&per_page=100&sort=created&direction=asc",
+  "closed_pr_count": 38,
+  "merged_pr_count": 21,
+  "excluded_unmerged_prs": [
+    26,
+    27,
+    32,
+    34,
+    40,
+    41,
+    43,
+    46,
+    51,
+    55,
+    66,
+    80,
+    85,
+    90,
+    101,
+    104,
+    106
+  ],
+  "pagination": {
+    "page_1_count": 38,
+    "page_2_count": 0
+  },
+  "entries": [
+    {
+      "sequence": 1,
+      "pr": 1,
+      "merged_at": "2016-10-31T11:11:32Z",
+      "source_commit_sha": "77cf1678dbb9dcb778e16e898097d32c8b5cca38",
+      "file": "001-pr-1.json"
+    },
+    {
+      "sequence": 2,
+      "pr": 4,
+      "merged_at": "2018-01-04T00:21:27Z",
+      "source_commit_sha": "e26f523abacccfbf4125de72de1e242d1cc884e8",
+      "file": "002-pr-4.json"
+    },
+    {
+      "sequence": 3,
+      "pr": 7,
+      "merged_at": "2018-06-06T15:59:27Z",
+      "source_commit_sha": "587c309fdb72cac75e24817a3bbde2e9473aa18d",
+      "file": "003-pr-7.json"
+    },
+    {
+      "sequence": 4,
+      "pr": 8,
+      "merged_at": "2018-06-14T17:42:52Z",
+      "source_commit_sha": "d49eb136a5780c937870dbad815376217b963ef4",
+      "file": "004-pr-8.json"
+    },
+    {
+      "sequence": 5,
+      "pr": 9,
+      "merged_at": "2018-12-25T14:12:19Z",
+      "source_commit_sha": "2a5d6db14d6089579a33cc70f8b9fa26c263b58a",
+      "file": "005-pr-9.json"
+    },
+    {
+      "sequence": 6,
+      "pr": 11,
+      "merged_at": "2019-03-02T19:13:29Z",
+      "source_commit_sha": "7152662231c92787d64ca0e53565a5645fc8b639",
+      "file": "006-pr-11.json"
+    },
+    {
+      "sequence": 7,
+      "pr": 12,
+      "merged_at": "2019-04-26T04:53:44Z",
+      "source_commit_sha": "80c38e8502d42ea12f3d1648fdc5ab91edc0c84e",
+      "file": "007-pr-12.json"
+    },
+    {
+      "sequence": 8,
+      "pr": 20,
+      "merged_at": "2020-04-05T15:37:34Z",
+      "source_commit_sha": "d91b3267b83860a4e1697db7bc29d5b22fe71aee",
+      "file": "008-pr-20.json"
+    },
+    {
+      "sequence": 9,
+      "pr": 28,
+      "merged_at": "2020-05-18T06:57:35Z",
+      "source_commit_sha": "7b978e3d6801ffdd4ee29b3329b4a32d617607fc",
+      "file": "009-pr-28.json"
+    },
+    {
+      "sequence": 10,
+      "pr": 30,
+      "merged_at": "2020-06-06T16:18:38Z",
+      "source_commit_sha": "a8a76b639f2ae8bdda6f7f7503d3c693be60c60f",
+      "file": "010-pr-30.json"
+    },
+    {
+      "sequence": 11,
+      "pr": 35,
+      "merged_at": "2020-07-12T13:35:19Z",
+      "source_commit_sha": "4ab2813001fae4345d02e7fee394222cffd371d9",
+      "file": "011-pr-35.json"
+    },
+    {
+      "sequence": 12,
+      "pr": 47,
+      "merged_at": "2020-11-25T07:28:52Z",
+      "source_commit_sha": "54c0ba85af33fef826f7d91dca57734141ad550c",
+      "file": "012-pr-47.json"
+    },
+    {
+      "sequence": 13,
+      "pr": 50,
+      "merged_at": "2021-02-23T06:21:35Z",
+      "source_commit_sha": "cada94ef6ec5fc2b24b97629c3f683e95ee6e13a",
+      "file": "013-pr-50.json"
+    },
+    {
+      "sequence": 14,
+      "pr": 71,
+      "merged_at": "2023-11-01T06:13:46Z",
+      "source_commit_sha": "ad8afe6f46429e726b32fdedf063c553ebcb0196",
+      "file": "014-pr-71.json"
+    },
+    {
+      "sequence": 15,
+      "pr": 83,
+      "merged_at": "2024-07-04T11:52:03Z",
+      "source_commit_sha": "80273d742fa7d4d4845d7e598e19c2b430636519",
+      "file": "015-pr-83.json"
+    },
+    {
+      "sequence": 16,
+      "pr": 79,
+      "merged_at": "2024-07-08T12:02:18Z",
+      "source_commit_sha": "3e4fdd16df0461e56e58cc32686d3011f5e2b461",
+      "file": "016-pr-79.json"
+    },
+    {
+      "sequence": 17,
+      "pr": 88,
+      "merged_at": "2024-12-19T15:35:28Z",
+      "source_commit_sha": "ef48184a8f9c3d61867d25bebaa8837f23485646",
+      "file": "017-pr-88.json"
+    },
+    {
+      "sequence": 18,
+      "pr": 93,
+      "merged_at": "2025-08-14T14:51:00Z",
+      "source_commit_sha": "be1965bea1133b683a509f680a31bcc2e14c1be2",
+      "file": "018-pr-93.json"
+    },
+    {
+      "sequence": 19,
+      "pr": 98,
+      "merged_at": "2025-10-19T15:16:26Z",
+      "source_commit_sha": "d76231b44ec6693212bcf245e57b7b95cfc93297",
+      "file": "019-pr-98.json"
+    },
+    {
+      "sequence": 20,
+      "pr": 108,
+      "merged_at": "2026-07-20T20:12:34Z",
+      "source_commit_sha": "ef37eb2f372d385883d113803c98ba0bf3828ad1",
+      "file": "020-pr-108.json"
+    },
+    {
+      "sequence": 21,
+      "pr": 109,
+      "merged_at": "2026-08-31T16:47:35Z",
+      "source_commit_sha": "f3e7f9ba364a9357bd912d136367d06c46660917",
+      "file": "021-pr-109.json"
+    }
+  ]
+}
