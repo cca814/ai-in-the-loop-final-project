@@ -1,0 +1,6 @@
+{
+  "name": "slide-generator-mock-storage",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test" }
+}

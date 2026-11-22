@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { parseRepositoryUrl, publicRepositoryClient, repositoryImportHandler } from './public-repository.js';
-import { retrieveRepositoryContext } from './repository-context.js';
+import { retrieveRepositoryContext, repositorySources } from './repository-context.js';
 import { reportHandler } from './http.js';
 import { prepareEvidence } from './evidence.js';
 import { prepareState } from './state.js';
@@ -54,6 +54,26 @@ test('inventory does not download bodies; planner reads only exact selected comm
     return JSON.stringify({ files: [{ path: 'README.md', start_line: attempts === 1 ? 1000 : 1, end_line: attempts === 1 ? 1001 : 3 }], reason: 'Read purpose' });
   } });
   assert.equal(attempts, 2); assert.equal(calls.length, 4);
+});
+
+test('directory tasks receive verified names separately from file excerpts; ordinary edits do not', async () => {
+  const directories = ['.github', '.github/workflows', 'scripts'];
+  const { client, calls } = fixture({ [`example/library/git/trees/${tree}?recursive=1`]: { sha: tree, truncated: false, tree: [
+    ...directories.map(path => ({ path, type: 'tree', mode: '040000', sha: tree })),
+    { path: 'README.md', type: 'blob', mode: '100644', sha, size: Buffer.byteLength(content) },
+  ] } });
+  const snapshot = await client.loadSnapshot(state);
+  assert.deepEqual(snapshot.directoryInventory, { directories, complete: true });
+  const context = await retrieveRepositoryContext({ state, mode: 'revise', request: '每個資料夾一頁' }, { loadSnapshot: async () => snapshot, complete: async messages => {
+    assert.deepEqual(JSON.parse(messages[1].content).directory_inventory.directories, directories);
+    return JSON.stringify({ files: [], reason: 'Inventory only; purpose unassessed' });
+  } });
+  assert.deepEqual(context.inventory.directories, directories);
+  assert.equal(repositorySources(context, state)[0].id, 'repo-tree');
+  assert.equal(calls.length, 3); // No file bodies were downloaded.
+  const plain = await retrieveRepositoryContext({ state, mode: 'revise', request: '縮短講稿' }, { loadSnapshot: async () => snapshot, complete: async () => JSON.stringify({ files: [], reason: 'Wording only' }) });
+  assert.equal(plain.inventory, undefined);
+  assert.throws(() => repositorySources({ ...context, inventory: { ...context.inventory, directories: ['../secret'] } }, state));
 });
 test('truncated trees, private repos, wrong blob hashes and GitHub rate limits fail safely', async () => {
   await assert.rejects(() => fixture({ 'example/library': { private: true } }).client.loadSnapshot(state), { code: 'REPOSITORY_UNAVAILABLE' });

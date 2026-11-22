@@ -54,6 +54,9 @@
 .reports-snapshotEvidence a, .reports-caption a { color: #234e7b; text-decoration: underline; text-underline-offset: 3px; }
 .reports-repositoryTrace { margin-top: 18px; margin-bottom: 0; }.reports-repositoryTrace ul { margin-top: 10px; padding-left: 18px; list-style: disc; overflow-wrap: anywhere; }.reports-repositoryTrace a { color: #234e7b; text-decoration: underline; }
 .reports-gridSplit { grid-template-columns: minmax(210px, .65fr) minmax(0, 2fr) minmax(220px, .75fr); }
+.reports-grid.reports-gridWithoutChat { grid-template-columns: minmax(235px, .8fr) minmax(0, 2.2fr); }
+.reports-grid.reports-gridWithoutChat > :last-child { grid-column: auto; }
+@media (max-width: 680px) { .reports-grid.reports-gridWithoutChat { grid-template-columns: minmax(0, 1fr); } }
 .reports-editorModes { display: inline-flex; align-self: flex-start; gap: 3px; padding: 4px; background: #edf1f6; border-radius: 8px; margin-bottom: 18px; }
 .reports-editorModes button { cursor: pointer; padding: 8px 16px; border: 1px solid transparent; border-radius: 5px; color: #52677d; font-size: .875rem; font-weight: 600; }
 .reports-editorModes button[aria-pressed="true"] { background: white; color: #234e7b; border-color: #d4dee9; box-shadow: 0 1px 3px #1826370d; }
@@ -82,6 +85,17 @@
 .reports-review .reports-reviewPreview { height: 420px; max-height: 420px; min-height: 0; padding: 12px; font-size: .875rem; }
 .reports-reviewColumns > div { min-width: 0; }
 .reports-reviewColumns > :first-child .reports-reviewPreview { background: #fff7f7; }.reports-reviewColumns > :last-child .reports-reviewPreview { background: #f3fbf6; }
+.reports-reviewDialog { position: fixed; inset: 0; margin: auto; width: calc(100vw - 32px); max-width: none; height: calc(100dvh - 32px); max-height: none; box-sizing: border-box; padding: 0; background: white; color: #182637; font-family: Arial, sans-serif; box-shadow: 0 16px 60px #142b4a55; }
+.reports-reviewDialog[open] { display: flex; flex-direction: column; }
+.reports-reviewDialog::backdrop { background: #10223799; }
+.reports-reviewHeader { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 20px; border-bottom: 1px solid #dde3eb; flex-shrink: 0; }
+.reports-reviewHeader h2 { margin: 0; font-size: 1.25rem; font-weight: 700; }
+.reports-reviewIntro { padding: 0 20px; max-height: 22vh; overflow: auto; flex-shrink: 0; }
+.reports-reviewDialog .reports-reviewColumns { flex: 1; min-height: 0; margin: 12px 0; padding: 0 20px; }
+.reports-reviewDialog .reports-reviewColumns > div { display: flex; flex-direction: column; min-height: 0; }
+.reports-review.reports-reviewDialog .reports-reviewPreview { flex: 1; height: auto; max-height: none; min-height: 0; overscroll-behavior: contain; }
+.reports-reviewDialog .reports-reviewFooter { flex-shrink: 0; margin: 0; padding: 14px 20px; border-top: 1px solid #dde3eb; }
+@media (max-width: 680px) { .reports-reviewDialog { width: calc(100vw - 12px); height: calc(100dvh - 12px); }.reports-reviewHeader, .reports-reviewIntro, .reports-reviewDialog .reports-reviewFooter { padding: 10px; }.reports-reviewDialog .reports-reviewColumns { padding: 0 10px; gap: 8px; }.reports-review.reports-reviewDialog .reports-reviewPreview { padding: 8px; font-size: .8rem; } }
 .reports-quality { margin-top: 16px; font-size: .85rem; line-height: 1.7; }.reports-quality summary { cursor: pointer; color: #234e7b; }.reports-quality ul { padding-left: 18px; list-style: disc; max-height: 240px; overflow: auto; }
 .reports-slideFrame { display: block; width: 100%; height: min(65vw, 560px); min-height: 240px; border: 1px solid #bac6d4; border-radius: 8px; margin-top: 12px; }
 @media (max-width: 680px) { .reports-exportControls { grid-template-columns: 1fr; }.reports-exportActions { align-items: stretch; flex-direction: column; } }

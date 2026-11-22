@@ -10,9 +10,14 @@ const chineseNumber = value => {
 };
 
 export function reportRequirements(request = '', { currentPages } = {}) {
+  // "one page per directory" allocates pages; it is not a one-page total.
+  const perDirectory = /(?:每(?:一)?(?:個)?|一個)\s*(?:資料夾|目錄)\s*(?:各|各自)?\s*(?:用|使用|佔|占)?\s*(?:一|1)\s*頁|(?:資料夾|目錄)\s*(?:各|各自)\s*(?:用)?\s*(?:一|1)\s*頁|(?:one|1)\s+page\s+(?:per|for each)\s+(?:folder|directory)|(?:each|every)\s+(?:folder|directory)\s+(?:gets?|uses?)\s+(?:one|1)\s+page/gi;
+  const pageAllocation = perDirectory.test(request);
+  perDirectory.lastIndex = 0;
+  const countRequest = request.replace(perDirectory, ' ');
   const referencesPage = /第\s*[一二兩三四五六七八九十\d]+\s*頁/.test(request);
   const explicitTotal = /總共|總計|共\s*[一二兩三四五六七八九十\d]+\s*頁|整份.*(?:頁|pages)|最終.*(?:頁|pages)/i.test(request);
-  const counts = [...request.matchAll(/(?:共|總共|總計|分成|改成|改為|整理成|拆成|合併成|做成|做|要|成)?\s*([1-9]\d*|[一二兩三四五六七八九十]{1,3})\s*(?:頁|張投影片|個章節|節|pages?\b|slides?\b)/gi)].filter(match => !/第\s*$/.test(request.slice(0, match.index))).map(match => chineseNumber(match[1]));
+  const counts = [...countRequest.matchAll(/(?:共|總共|總計|分成|改成|改為|整理成|拆成|合併成|做成|做|要|成)?\s*([1-9]\d*|[一二兩三四五六七八九十]{1,3})\s*(?:頁|張投影片|個章節|節|pages?\b|slides?\b)/gi)].filter(match => !/第\s*$/.test(countRequest.slice(0, match.index))).map(match => chineseNumber(match[1]));
   const unique = [...new Set(counts)];
   if (unique.some(count => !Number.isInteger(count) || count < 1 || count > 100) || unique.length > 1) throw new ModelOutputError('請指定單一、介於 1 到 100 的報告頁數；相對增減或多個頁數請改用明確的最終頁數。', 'REQUIREMENTS_AMBIGUOUS');
   // Relative requests need the original draft; do not mistake "add 2 pages"
@@ -22,7 +27,7 @@ export function reportRequirements(request = '', { currentPages } = {}) {
   if (relativePages !== undefined && (relativePages < 1 || relativePages > 100)) throw new ModelOutputError('增減後的報告需介於 1 到 100 頁。', 'REQUIREMENTS_AMBIGUOUS');
   const language = /繁體|繁中|traditional\s+chinese/i.test(request) ? 'zh-Hant' : /(?:用|以|翻成|翻譯成|改成)\s*中文|(?:translate|write).*\bChinese\b/i.test(request) ? 'zh' : /(?:用|以|改成|翻成|翻譯成)\s*英文|\bin English\b|translate.*\bEnglish\b/i.test(request) ? 'en' : undefined;
   const limitedLanguage = /講稿|備忘|備註|標題|重點|speaker\s+notes?|\btitle\b|\bbullets?\b/i.test(request) && !/整份|整個|全文|全部|所有|whole|entire|full report/i.test(request);
-  return { ...(relativePages !== undefined ? { pages: relativePages } : unique.length && !relative && (!referencesPage || explicitTotal) ? { pages: unique[0] } : {}), ...(language && !limitedLanguage ? { language } : {}) };
+  return { ...(relativePages !== undefined ? { pages: relativePages } : unique.length && !relative && (!referencesPage || explicitTotal) ? { pages: unique[0] } : {}), ...(pageAllocation ? { pagesPerDirectory: 1 } : {}), ...(language && !limitedLanguage ? { language } : {}) };
 }
 
 export function untranslatedChineseReport(report) {

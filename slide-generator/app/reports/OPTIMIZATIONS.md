@@ -21,7 +21,7 @@
 | Provider 輸出檢查 | OpenAI／Groq 與 Gemini 都檢查已回報的輸出完成原因；保留原本 JSON 與修正驗證。 | 尚未加入各 Provider 的原生 JSON Schema 約束。 |
 | 用量觀測 | 回應附模型呼叫次數、HTTP 嘗試、耗時與供應商回報 token，沒有記錄 Key 或原始錯誤內容。 | token 未回報時顯示 0；未估算價格或接中央監控。 |
 | 選檔快取 | 開發伺服器快取最多 20 組、5 分鐘的已驗證 repo context；key 包含 State、需求、草稿、對話、模型與選檔版本。修改需求不會誤用舊選檔。 | 僅程序記憶體，不跨執行個體；不快取生成報告。注入 complete 的測試預設不啟用快取。 |
-| p-limit 隔離 | 檔案載入器與 literal URL 映射移至 `test-data/p-limit/adapters/`；核心接受注入的 repository/history loader，並測試另一個 repo 的資料。工作區透過 props 接收資料集，歷史資料選單移到 fixture 自己的檔案。 | `/reports` 的資料組合及本機 API 仍刻意接測試 adapter，尚未完成正式資料接入；合併 main 前仍需替換入口依賴。 |
+| 通用歷史重建及測試隔離 | `state-replay` 逐版承接、完整 Schema 驗證、來源限制、續跑與 latest 保存；網頁及報告 API 改讀已驗證結果。p-limit 專用資料／adapter 已移至忽略的本機 legacy 目錄；正式入口不引用。回歸測試改用小型模擬 repo。 | 是部分歷史重建，非正式 Intent Supervisor；尚未接 Firebase，也不能證明所有語意正確。 |
 | 實際投影片預覽 | 建立網頁簡報後，可在工作區展開 iframe 查看真正 Slidev 畫面。 | 仍須先建置；不是每次鍵入即時渲染。 |
 | 溢出檢查 | 「檢查投影片溢出」建立暫存 SPA，在 Chromium 逐頁測量內容與固定畫布邊界。實測短頁通過、45 個條列的第 2 頁被標為垂直溢出。 | 需 Chromium；不自動刪文、拆頁或保證 PPTX 字型。圖表、圖片與複雜視覺仍需人工檢查。 |
 | 渲染資源上限 | 同一 Node 程序最多兩個建置／匯出／版面檢查工作；忙碌回覆 `RENDER_BUSY`，結束或失敗釋放名額。 | 不是分散式任務佇列，不提供跨程序續跑。 |
@@ -52,7 +52,7 @@ node report-agent/verify.mjs --browser
 - 跨輪證據保留與「每句結論」的來源關聯；目前審閱紀錄只說明本次輸入及報告引用。
 - 對話語意摘要、串流輸出、模型切換 UI、完整階段進度與失敗後從中間階段續跑。
 - Firestore State 讀取、草稿／對話／版本持久化、登入、權限、用量限制與正式完整 Schema 驗證邊界：需與組員協調。
-- 公開 GitHub repo 網址的目前版本讀取已加入（見下方補充）；任意 repo 的歷史 PR 區間與完整歷史程式碼分析尚未做。p-limit 歷史回放仍是 fixture，正式 main 前須替換 UI/API 的測試入口。
+- 公開 GitHub 現況及通用歷史重建已加入；仍未完成完整歷史議題／規劃／CI／安全分析，歷史分支名稱需明確指定。真實模型的少量重建與內容品質仍須人工驗收。
 - Vercel／其他環境的渲染工作執行位置、分散式佇列、長期播放檔案保存與正式部署驗收。
 - 圖片資源打包、免 Node 的可攜式執行方案、PPTX 與網頁完全一致的字型／排版或動畫。部分是輸出格式限制。
 - GitHub Actions 自動驗收：尚未新增 workflow；若要加入，先確認方案，再由使用者執行 Git/GitHub 寫入。
@@ -63,12 +63,12 @@ node report-agent/verify.mjs --browser
 
 `/reports` 可載入公開 GitHub repo，固定預設分支目前 commit，按需取得經 Git SHA-1 驗證的文字片段，沿用報告 JSON、修改驗證與簡報匯出流程。使用獨立 Repo Snapshot 契約，沒有冒充正式 Project State，也沒有將未評估的功能進度或風險當作零。
 
-新增 6 個自動測試與網址載入／生成／失敗保留／重新載入的瀏覽器驗收；全套離線測試共 101 個。另以 p-limit 的公開 GitHub API 實測中繼資料、樹與 README 讀取，及 Next.js import route 回傳成功；沒有呼叫真實 LLM。此功能仍限本機，公開網址模式尚未支援歷史 PR 自動重建、私有庫或大型／截斷檔案樹。完整限制見 [README](README.md)。
+公開現況與歷史重建的單元／整合測試使用模擬 GitHub、模擬 LLM；網頁與編譯路由讀取實際本機 checkpoint。另實測 p-limit 的匿名 GET 與 plan-only 清單，main／master 共 21 次合併，沒有呼叫真實 LLM。原始第三方 fixture 不在正式入口或新版回歸測試中。完整限制見 [README](README.md)。
 
 ## 與組員協調的下一步方案（尚未實作或定案）
 
 1. 由既有 Firebase 資料層提供授權後的 State 與歷史清單，頁面整理成 `WorkspaceDataset[]` 傳入工作區；不讓正式 API 將任意前端 JSON 當成可信 State。
-2. 正式 API 接收 State ID／報告版本 ID，由後端讀取並驗證，再呼叫既有核心函式。repo 與歷史 loader 由後端注入，取代目前的 fixture adapter。
+2. 正式 API 接收授權後的 State ID／報告版本 ID，由後端讀取並驗證，再呼叫既有核心函式。目前本機 replay adapter 已依 ID 從磁碟重讀驗證；正式 Firestore adapter 仍需組員接入。
 3. 草稿、對話與版本由組員的資料層儲存，版本更新需帶預期版本，避免覆蓋其他使用者的新修改；目前記憶體 undo 不代替此機制。
 4. 決定渲染是在網站主機或獨立 worker 執行，再設計任務 ID、權限、狀態查詢、檔案保存與到期政策；不直接把 production 禁用開關移除就部署。
-5. 移除正式頁面的 p-limit 資料組合引用、將兩個報告 API 換成正式 adapter，檢查正式打包不含 fixture，再討論可合併的 PR 範圍。p-limit 測試仍可留在目前開發分支使用。
+5. 專用測試入口已移除；依 [PR 交接](PR-HANDOFF.md) 核對正式 PR 範圍、完整建置與人工模型驗收，再由使用者執行 Git/GitHub 寫入。

@@ -7,6 +7,7 @@ import { applyRevisionResult, reportUrls, wantsPlainLanguageRewrite } from './re
 import { repositorySources } from './repository-context.js';
 import { repositoryEvidenceRules, reportWritingRules } from './prompt.js';
 import { mergeHistoryRules, mergeHistorySources } from './merge-history.js';
+import { parseReport } from './report-format.js';
 
 // Return exact, unique replacements so bytes outside requested edits stay intact.
 export async function reviseReport({ state, report, request, history = [] }, { complete, repositoryContext, mergeHistory, maxCorrectionRetries = 1 } = {}) {
@@ -37,6 +38,8 @@ export async function reviseReport({ state, report, request, history = [] }, { c
   if (prepared.evidence_kind === 'repository_snapshot') messages[0].content += ` ${repositorySnapshotRules}`;
   messages[0].content += ' Write the brief response message in the language of the current user request (Traditional Chinese for a Traditional Chinese request). Distinguish preserving facts from preserving wording: evidence restrictions do not forbid explaining or simplifying existing content.';
   if (wantsPlainLanguageRewrite(request)) messages[0].content += ' The user requests a non-technical audience adaptation. Make concrete edits to the CURRENT report: replace unnecessary jargon with everyday descriptions and explain indispensable concepts briefly at first use, in both bullets and speaker notes within the requested scope. For example, a queue can be described as work waiting its turn, concurrency as how many tasks run at once, and rate limiting as limiting how many requests are sent in a period. Use such descriptions only where they faithfully explain concepts already present; do not add a new capability, measured outcome, guarantee, risk or analogy implying behavior absent from the evidence. A technical identifier may be omitted from audience-facing prose or retained alongside an explanation; preserve URLs and source destinations. This is a wording change, not a request to change implementation facts or re-assess progress. Judge the actual report rather than previous assistant claims; do not return unchanged text just because the original facts are correct. Preserve page structure, meaningful speaker notes and citations. If the whole report needs audience adaptation, replacing the whole report is allowed with an exact old match. Do not claim success without actual edits.';
+  messages[1].content = JSON.stringify({ ...JSON.parse(messages[1].content), requirements, current_page_count: /^#\s+\S/m.test(report) ? (report.match(/^#\s+\S/gm) || []).length : null });
+  messages[0].content += ' The supplied requirements are normalized constraints: requirements.pages means the FINAL total number of pages; relative additions/removals have already been resolved against current_page_count. A requested total page-count change permits restructuring the affected report, including an exact whole-report replacement when necessary; keep supported facts, citations and meaningful notes. requirements.pagesPerDirectory=1 means ONE page for EACH evidenced directory, NOT one page for the whole report. Use the supplied directory inventory to identify real directories; explain their purpose only when supported by file excerpts or State. Do not invent typical src/tests/docs folders, treat root files as directories, or infer purpose from names alone. If no directory inventory or supporting evidence is supplied, ask for repo reading or explain the missing input in message with changes: []; do not claim a folder-by-folder rewrite was completed.';
   const allowedUrls = new Set([...reportUrls(report), ...prepared.source_refs.map(ref => ref.url), prepared.repository.url, ...extraSources.map(ref => ref.url)]);
   for (let attempt = 0; ; attempt++) {
     // Provider/network errors are deliberately outside the correction block.
@@ -47,7 +50,11 @@ export async function reviseReport({ state, report, request, history = [] }, { c
       const revised = applyRevisionResult(result, { report, request, allowedUrls });
       if (/^#\s+\S/m.test(revised.report)) {
         try { validateRequirements(revised.report, requirements); }
-        catch (error) { throw new RevisionOutputError(error.message, 'REVISION_REQUIREMENT_INVALID'); }
+        catch (error) {
+          const failure = new RevisionOutputError(error.message, 'REVISION_REQUIREMENT_INVALID');
+          failure.requirementIssue = { expectedPages: requirements.pages, actualPages: parseReport(revised.report).length, language: requirements.language };
+          throw failure;
+        }
       }
       return { ...revised, historyOmittedTurns: conversation.omitted };
     } catch (error) {

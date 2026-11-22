@@ -81,7 +81,9 @@ test('default briefing instructions target a supervisor without enforcing a sect
   const report = await generateReport(state, { complete: async messages => {
     assert.match(messages[0].content, /engineer reporting progress to a supervisor/);
     assert.match(messages[0].content, /Default to Traditional Chinese/);
-    assert.match(messages[0].content, /not mandatory headings or a fixed section count/);
+    assert.match(messages[0].content, /first introduce the whole project/);
+    assert.match(messages[0].content, /Then present recent results, followed by outstanding issues/);
+    assert.match(messages[0].content, /suitable number of pages rather than a fixed template/);
     assert.match(messages[0].content, /main\/master branch names/);
     assert.match(messages[0].content, /Completion of implementation is not proof of release/);
     return JSON.stringify({ pages: [

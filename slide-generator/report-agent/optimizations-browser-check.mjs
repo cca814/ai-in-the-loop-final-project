@@ -1,7 +1,7 @@
+import { openTestWorkspace } from './browser-fixture.mjs';
 // Existing local Next server; all model calls are mocked in this process.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { readFile } from 'node:fs/promises';
 import { reportHandler } from './http.js';
 
 const require = createRequire(import.meta.url);
@@ -28,7 +28,7 @@ try {
     const response = await revise(new Request(route.request().url(), { method: 'POST', body: JSON.stringify(body) }));
     await route.fulfill({ status: response.status, json: await response.json() });
   });
-  await page.goto(`${base}/reports`, { waitUntil: 'networkidle' });
+  await openTestWorkspace(page, base);
   assert.equal(await page.getByRole('checkbox', { name: '修改前先確認差異', exact: true }).isChecked(), true);
   await page.getByRole('button', { name: '生成報告', exact: true }).click();
   const editor = page.getByLabel('直接編輯 Markdown');
@@ -39,7 +39,14 @@ try {
   const manual = await editor.inputValue();
   await page.getByLabel('修改要求', { exact: true }).fill('縮短講稿');
   await page.getByRole('button', { name: '預覽修改', exact: true }).click();
-  await page.getByRole('region', { name: '修改差異確認' }).waitFor();
+  const reviewDialog = page.getByRole('dialog', { name: '確認修改後再套用', exact: true });
+  await reviewDialog.waitFor();
+  assert.equal(await page.evaluate(() => document.body.style.overflow), 'hidden');
+  assert.equal(await page.evaluate(() => document.activeElement?.id), 'revision-review-title');
+  for (let index = 0; index < 10; index++) {
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => !!document.activeElement?.closest('dialog')), true);
+  }
   const beforePreview = page.getByRole('region', { name: '修改前', exact: true });
   const afterPreview = page.getByRole('region', { name: '修改後', exact: true });
   assert.equal(await beforePreview.locator('h1').textContent(), '進度摘要');
@@ -58,13 +65,22 @@ try {
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 });
     const bounds = await beforePreview.evaluate(element => ({ height: element.clientHeight, range: element.scrollHeight - element.clientHeight }));
-    assert.ok(bounds.height <= 420 && bounds.range > 0);
+    assert.ok(bounds.height > 200 && bounds.height < 1000 && bounds.range > 0);
+    const modalBounds = await reviewDialog.boundingBox();
+    assert.ok(modalBounds.width >= width * .9 && modalBounds.height >= 900);
+    assert.ok(modalBounds.x >= 0 && modalBounds.y >= 0 && modalBounds.x + modalBounds.width <= width + 1);
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   console.log('Revision previews passed: rendered headings, emphasis, GFM table, safe links, bounded heights and bidirectional proportional scrolling.');
   assert.equal(await editor.inputValue(), manual);
   assert.equal(await page.getByRole('log').count(), 0);
+  await page.keyboard.press('Escape');
+  assert.equal(await reviewDialog.isVisible(), false);
+  assert.equal(await editor.inputValue(), manual);
+  await page.getByRole('button', { name: '開啟修改預覽', exact: true }).click();
+  await reviewDialog.waitFor();
   await page.getByRole('button', { name: '捨棄這次修改', exact: true }).click();
+  assert.notEqual(await page.evaluate(() => document.body.style.overflow), 'hidden');
   assert.equal(await editor.inputValue(), manual);
   assert.equal(await page.getByLabel('修改要求', { exact: true }).inputValue(), '縮短講稿');
   await page.getByRole('button', { name: '預覽修改', exact: true }).click();
@@ -75,16 +91,11 @@ try {
   await page.getByRole('button', { name: '復原上一版', exact: true }).click();
   assert.equal(await editor.inputValue(), manual);
   assert.equal(await page.locator('.reports-chatLog strong').count(), 0);
-  await page.getByRole('button', { name: '重做', exact: true }).click();
+  await page.getByRole('button', { name: '恢復剛才的修改', exact: true }).click();
   assert.equal(await editor.inputValue(), accepted);
   assert.equal(await page.locator('.reports-chatLog strong').count(), 2);
-  await page.getByRole('button', { name: '檢查目前草稿', exact: true }).click();
-  await page.locator('.reports-quality').waitFor();
-  const downloading = page.waitForEvent('download');
-  await page.getByRole('button', { name: '下載報告與審閱紀錄', exact: true }).click();
-  const saved = JSON.parse(await readFile(await (await downloading).path(), 'utf8'));
-  assert.equal(saved.report, accepted);
-  assert.ok(saved.quality.provenance.verification.includes('human review'));
+  assert.equal(await page.getByRole('button', { name: '檢查目前草稿', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: '下載報告與審閱紀錄', exact: true }).count(), 0);
   await page.getByLabel('修改要求', { exact: true }).fill('壞來源測試');
   await page.getByRole('button', { name: '預覽修改', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'REVISION_SOURCE_INVALID' }).waitFor();
@@ -96,7 +107,7 @@ try {
   await page.waitForTimeout(800);
   assert.equal(await editor.inputValue(), accepted);
   assert.equal(await page.getByLabel('修改要求', { exact: true }).inputValue(), '等待測試');
-  assert.equal(await page.getByRole('region', { name: '修改差異確認' }).count(), 0);
+  assert.equal(await page.getByRole('dialog', { name: '確認修改後再套用', exact: true }).count(), 0);
   let warned = false;
   page.once('dialog', async dialog => { warned = dialog.type() === 'beforeunload'; await dialog.dismiss(); });
   try { await page.reload({ timeout: 3000 }); } catch { /* Navigation correctly blocked. */ }

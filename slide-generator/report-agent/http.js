@@ -32,7 +32,11 @@ function failure(error, mode) {
   if (error instanceof RevisionOutputError) {
     if (error.code === 'REVISION_NO_EFFECT') return { status: 502, code: error.code, retryable: true, error: '模型未實際改寫報告，已請它修正一次，仍未提供有效變更。草稿保持原樣；可指定一段先改成白話，或直接手動編輯。' };
     const messages = { REVISION_REQUIREMENT_INVALID: '模型未滿足指定的頁數或語言要求。', REVISION_SCOPE_INVALID: '模型修改了要求範圍以外的頁面。', REVISION_STRUCTURE_INVALID: '修改後的頁面缺少講稿或分頁結構不完整；目前報告已保留。', REVISION_JSON_INVALID: '模型未回傳有效的修改 JSON。', REVISION_MATCH_FAILED: '模型指定的原文無法唯一對應目前報告。', REVISION_OVERLAP: '模型提出的修改區域互相重疊。', REVISION_SOURCE_INVALID: '模型新增的來源不在提供的證據中。', REVISION_TRANSLATION_INCOMPLETE: '模型未完整翻譯報告，仍留下明顯英文段落。' };
-    return { status: 502, code: error.code, retryable: true, error: `${messages[error.code] || '模型修改未通過檢查。'}已嘗試修正一次；草稿未變更，修改要求已保留。` };
+    const issue = error.requirementIssue;
+    const detail = error.code === 'REVISION_REQUIREMENT_INVALID' && Number.isInteger(issue?.expectedPages) && Number.isInteger(issue?.actualPages) && issue.expectedPages !== issue.actualPages
+      ? `要求整份報告 ${issue.expectedPages} 頁，修改結果為 ${issue.actualPages} 頁。`
+      : error.code === 'REVISION_REQUIREMENT_INVALID' && ['zh', 'zh-Hant', 'en'].includes(issue?.language) ? `要求${issue.language === 'en' ? '英文' : '中文'}內容，但仍有未符合的段落。` : '';
+    return { status: 502, code: error.code, retryable: true, error: `${messages[error.code] || '模型修改未通過檢查。'}${detail}已嘗試修正一次；草稿未變更，修改要求已保留。` };
   }
   if (error instanceof RepositoryContextError) return { status: 422, code: 'REPOSITORY_CONTEXT_UNAVAILABLE', retryable: false, error: '無法讀取此版本的 repo 內容，請確認資料載入器與選取的 commit；可關閉 repo 讀取後先依 Project State 生成。草稿與修改要求已保留。' };
   if (error instanceof ConfigurationError) return { status: 500, code: 'MODEL_CONFIGURATION', retryable: false, error: '模型設定不完整或不正確。請確認伺服器的 LLM_PROVIDER，以及對應的 API Key 和模型名稱。' };
@@ -55,7 +59,7 @@ function failure(error, mode) {
 }
 
 // Local integration endpoint. Authentication and persistence are separate work.
-export function reportHandler(mode, { complete, retrieveContext = retrieveRepositoryContext, loadHistory = async () => { throw new MergeHistoryError('No history loader configured'); }, publicClient = publicRepositoryClient, production = process.env.NODE_ENV === 'production' } = {}) {
+export function reportHandler(mode, { complete, retrieveContext = retrieveRepositoryContext, loadHistory = async () => { throw new MergeHistoryError('No history loader configured'); }, resolveState, publicClient = publicRepositoryClient, production = process.env.NODE_ENV === 'production' } = {}) {
   const cachedEvidence = createEvidenceCache();
   return async function POST(request) {
     if (production) return Response.json({ error: '報告 API 目前僅供本機開發使用。' }, { status: 403 });
@@ -74,13 +78,14 @@ export function reportHandler(mode, { complete, retrieveContext = retrieveReposi
     let stage = 'preparation';
     const operation = createOperation({ signal: request.signal });
     try {
+      if (resolveState) body.state = await resolveState(body);
       const remote = body.state.evidence_kind === 'repository_snapshot' ? publicClient({ signal: operation.signal }) : null;
       if (remote) {
         if (body.mergeRange) throw new PublicRepositoryError('MERGE_RANGE_UNAVAILABLE', 'Repo 現況模式沒有歷史快照區間。', 400);
         // Rebuild metadata on the server; never trust client-submitted assessments.
         body.state = await remote.resolve(body.state.repository.url, body.state.source_commit_sha);
       }
-      const mergeHistory = body.mergeRange ? await loadHistory(body.state, body.mergeRange) : undefined;
+      const mergeHistory = body.mergeRange ? await loadHistory(body.state, body.mergeRange, body) : undefined;
       const client = operation.wrap(complete ?? createClient({ signal: operation.signal, onUsage: operation.record }));
       stage = 'repository_selection';
       const selectionArgs = { state: body.state, mode, request: mode === 'revise' ? body.request : body.focus || '', report: mode === 'revise' ? body.report : '', history: mode === 'revise' ? body.history : [] };
@@ -91,7 +96,7 @@ export function reportHandler(mode, { complete, retrieveContext = retrieveReposi
           : retrieveContext(selectionArgs, { complete: client });
         const provider = process.env.LLM_PROVIDER || 'openai';
         const model = process.env[({ gemini: 'GEMINI_MODEL', groq: 'GROQ_MODEL', openai: 'OPENAI_MODEL' })[provider]];
-        const selected = complete ? { context: await load(), hit: false } : await cachedEvidence({ ...selectionArgs, version: 'selection-v2', provider, model }, load);
+        const selected = complete ? { context: await load(), hit: false } : await cachedEvidence({ ...selectionArgs, version: 'selection-v3-directory-inventory', provider, model }, load);
         repositoryContext = selected.context; evidenceCacheHit = selected.hit;
       }
       stage = mode === 'revise' ? 'report_revision' : 'report_generation';

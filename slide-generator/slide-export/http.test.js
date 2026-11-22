@@ -1,9 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { slideHandler } from './http.js';
+import { reportToSlides } from './convert.js';
 
 const report = '# Overview\n\n- A fact\n\n## Speaker Notes\n\nA note.\n\n## Sources\n\n- [Source](https://example.com/source)';
 const request = body => new Request('http://localhost:3000/api/reports/slides', { method: 'POST', body: JSON.stringify(body) });
+
+test('all rendering endpoints use edited slides verbatim without regenerating or calling a model', async () => {
+  const slides = reportToSlides(report, { transition: 'fade' }).replace('A fact', 'Edited slide fact').replace('A note.', 'Edited speaker note.');
+  for (const mode of ['export', 'web', 'portable', 'layout']) {
+    let received;
+    const capture = async value => { received = value; return mode === 'web' ? { url: '/preview/' } : mode === 'layout' ? { checkedPages: 1, overflowPages: [] } : Buffer.from('PK-edited'); };
+    const handler = slideHandler(mode, { production: false, complete: () => { throw new Error('No LLM'); }, render: capture, buildWeb: capture, archive: capture, inspectLayout: capture });
+    const response = await handler(request({ report, slides, transition: 'auto' }));
+    assert.equal(response.status, 200);
+    assert.equal(received, slides);
+  }
+});
+
+test('edited slide validation blocks executable syntax, imports and incomplete notes before rendering', async () => {
+  const valid = reportToSlides(report);
+  for (const slides of ['', valid.replace('theme: default', 'theme: ../custom'), valid.replace('theme: default', 'src: /private-file'), valid.replace('A fact', '{{ process.env }}'), valid.replace('A fact', '<script>alert(1)</script>'), valid.replace('A fact', '<v-clicks @click="bad">text</v-clicks>'), valid.replace('A fact', '<<< ../secret'), valid.replace('A fact', '```js\ncode\n```'), valid.replace('A note.', ''), `${valid}\n---\n# Missing notes`]) {
+    let called = false;
+    const response = await slideHandler('web', { production: false, buildWeb: async () => { called = true; } })(request({ report, slides }));
+    assert.equal(response.status, 400, slides);
+    assert.equal(called, false);
+  }
+  for (const slides of [valid.replace('A note.', '<script>bad</script>'), valid.replace('A fact', '[bad][ref]\n\n[ref]: javascript:bad'), valid.replace('A fact', '<v-clicks>Unclosed'), valid.replace('theme: default', 'theme: default\nzoom: 2')]) {
+    const response = await slideHandler('web', { production: false, buildWeb: () => { throw new Error('Must reject before render'); } })(request({ report, slides }));
+    assert.equal(response.status, 400);
+  }
+});
 
 test('slide endpoint preserves report text, sources and transition', async () => {
   const response = await slideHandler('slides', { production: false })(request({ report, transition: 'fade' }));

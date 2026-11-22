@@ -1,3 +1,4 @@
+import { openTestWorkspace } from '../report-agent/browser-fixture.mjs';
 // Uses the existing local Next server. All model responses are mocked; builds
 // and downloads use the real compiled Next routes and installed Slidev CLI.
 import assert from 'node:assert/strict';
@@ -22,7 +23,7 @@ try {
     const response = await handler(new Request(route.request().url(), { method: 'POST', body: route.request().postData() }));
     await route.fulfill({ status: response.status, contentType: 'application/json', body: await response.text() });
   });
-  await page.goto(`${base}/reports`, { waitUntil: 'networkidle' });
+  await openTestWorkspace(page, base);
   assert.equal(await page.getByLabel('網頁播放轉場').inputValue(), 'auto');
   await page.getByRole('button', { name: '生成報告', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#report-markdown').value.includes('First confirmed result'));
@@ -30,6 +31,9 @@ try {
   await page.getByRole('button', { name: '產生 Slidev 原稿', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('#slides-markdown')?.value.includes('<v-clicks>'));
   const source = await page.locator('#slides-markdown').inputValue();
+  await page.locator('.reports-slidePreview > summary').click();
+  const edited = source.replace('First confirmed result', 'First manually edited result').replace('Keep these exact speaker notes', 'Manually edited speaker notes');
+  await page.getByLabel('編輯 slides.md', { exact: true }).fill(edited);
   assert.equal(modelCalls, 1);
   assert.equal(await page.getByLabel('直接編輯 Markdown').inputValue(), report);
 
@@ -46,7 +50,7 @@ try {
       for (const record of records) for (const name of record.target.classList || []) if (/^(fade|slide-left)-(enter|leave)/.test(name)) window.observedTransitions.push(name);
     }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['class'] });
   });
-  const first = player.getByText('First confirmed result', { exact: true }).first();
+  const first = player.getByText('First manually edited result', { exact: true }).first();
   const second = player.getByText('Second confirmed result', { exact: true }).first();
   assert.equal(await first.evaluate(el => el.classList.contains('slidev-vclick-hidden')), true);
   assert.equal(await first.evaluate(el => el.classList.contains('slidev-vclick-anim-up')), true);
@@ -63,10 +67,10 @@ try {
   assert.ok(await player.evaluate(() => window.observedTransitions.length > 0));
   console.log('Automatic web effects passed: real built slides, click-by-click reveal, animation preset, transition and navigation; confirmed report unchanged.');
 
-  // Compiled endpoints must reconstruct exactly the same source without calling
-  // any provider, and static exports must include the final revealed state.
+  // Compiled endpoints must use the edited source without calling any provider;
+  // static exports must include edited content and the final revealed state.
   for (const format of ['pptx', 'pptx-editable']) {
-    const response = await page.request.post(`${base}/api/reports/export`, { data: { report, transition: 'auto', presentationPlan: plan, format }, timeout: 150000 });
+    const response = await page.request.post(`${base}/api/reports/export`, { data: { report, slides: edited, transition: 'auto', presentationPlan: plan, format }, timeout: 150000 });
     assert.equal(response.status(), 200, `PPTX export failed (${format})`);
     const zip = await JSZip.loadAsync(await response.body());
     const slideFiles = Object.keys(zip.files).filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name));
@@ -74,26 +78,26 @@ try {
     const notesFiles = Object.keys(zip.files).filter(name => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name));
     assert.equal(notesFiles.length, 2);
     const notes = (await Promise.all(notesFiles.map(name => zip.file(name).async('string')))).join('\n');
-    assert.match(notes, /Keep these exact speaker notes/);
+    assert.match(notes, /Manually edited speaker notes/);
     if (format === 'pptx-editable') {
       const text = (await Promise.all(slideFiles.map(name => zip.file(name).async('string')))).join('\n');
-      assert.match(text, /First confirmed result/);
+      assert.match(text, /First manually edited result/);
       assert.match(text, /Second confirmed result/);
       assert.match(text, /Existing open item/);
     }
     console.log(`${format} passed: two final-state pages and exact speaker notes.`);
   }
-  const portable = await page.request.post(`${base}/api/reports/portable`, { data: { report, transition: 'auto', presentationPlan: plan }, timeout: 150000 });
+  const portable = await page.request.post(`${base}/api/reports/portable`, { data: { report, slides: edited, transition: 'auto', presentationPlan: plan }, timeout: 150000 });
   assert.equal(portable.status(), 200);
   const archive = await JSZip.loadAsync(await portable.body());
   const slidesFile = Object.keys(archive.files).find(name => name.endsWith('/slides.md'));
   assert.ok(slidesFile);
-  assert.equal(await archive.file(slidesFile).async('string'), source);
+  assert.equal(await archive.file(slidesFile).async('string'), edited);
   assert.ok(Object.keys(archive.files).some(name => name.endsWith('/site/index.html')));
   assert.equal(modelCalls, 1);
   console.log('Portable ZIP passed: same Slidev source, effects and offline build; exports made no additional model calls.');
 
-  const checked = await page.request.post(`${base}/api/reports/layout`, { data: { report, transition: 'auto', presentationPlan: plan }, timeout: 150000 });
+  const checked = await page.request.post(`${base}/api/reports/layout`, { data: { report, slides: edited, transition: 'auto', presentationPlan: plan }, timeout: 150000 });
   assert.equal(checked.status(), 200);
   assert.deepEqual((await checked.json()).overflowPages, []);
   const dense = '# Normal\n\n- Short.\n\n## Speaker Notes\n\nNote.\n\n---\n\n# Too long\n\n' + Array.from({ length: 45 }, (_, index) => '- Long point ' + index).join('\n') + '\n\n## Speaker Notes\n\nAnother note.';
@@ -105,6 +109,8 @@ try {
   assert.equal(diagnostics.overflowPages[0].overflowY, true);
   console.log('Actual layout checks passed: short animated slides fit; intentionally dense page 2 overflows; no model calls.');
 
+  await page.getByLabel('編輯 slides.md', { exact: true }).fill(source);
+  assert.equal(await page.getByRole('link', { name: '開啟播放', exact: true }).count(), 0);
   await page.getByRole('button', { name: '產生 Slidev 原稿', exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll('button')].find(button => button.textContent === '產生 Slidev 原稿')?.disabled === false);
   assert.equal(modelCalls, 2);

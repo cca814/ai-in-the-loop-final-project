@@ -40,6 +40,15 @@ test('explicit counts in Chinese and English are enforced with one bounded corre
   assert.throws(() => reportRequirements('共101頁'), error => error.code === 'REQUIREMENTS_AMBIGUOUS');
 });
 
+test('one page per directory is an allocation, while an explicit total remains a total', () => {
+  for (const request of ['一個資料夾一頁', '每個資料夾各一頁', '資料夾各用1頁介紹', '1 page per directory', 'one page for each folder']) {
+    assert.equal(reportRequirements(request).pages, undefined);
+    assert.equal(reportRequirements(request).pagesPerDirectory, 1);
+  }
+  assert.equal(reportRequirements('每個資料夾一頁，總共三頁').pages, 3);
+  assert.equal(reportRequirements('整份報告改成一頁').pages, 1);
+});
+
 test('evidence cache is isolated by all supplied context, bounded, expiring and returns copies', async () => {
   let now = 0, calls = 0;
   const cache = createEvidenceCache({ capacity: 2, ttlMs: 10, now: () => now });

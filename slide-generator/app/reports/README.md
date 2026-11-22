@@ -1,12 +1,10 @@
 # Report workspace：本機啟動與驗收
 
-本波已完成項目、驗收結果與未完成工作見 [改善紀錄](OPTIMIZATIONS.md)。目前也可從 `slide-generator` 執行 `node report-agent/verify.mjs` 統一檢查；加 `--browser` 或 `--render` 需先啟動本機 Next.js。
-
-這是既有 Next.js 專案的 `/reports` 頁面，不是另一套網站。它串接 Project State 範例、報告生成、手動與多輪對話修改，以及 Slidev 網頁簡報、PPTX 和可攜式網頁 ZIP。
+既有 Next.js 專案的 `/reports` 目前以 walking skeleton 為主：讀取 State → 生成報告 → 手動編輯與下載 Markdown → Slidev 網頁、PPTX 或可攜式 ZIP。草稿儲存／載入、對話修改與前後審閱視窗已從網頁停用，相關底層功能、API、測試及既存資料保留。`workspace.tsx` 的 `conversationEnabled = false` 與 `draftStorageEnabled = false` 控制入口，沒有公開網址或瀏覽器儲存開關可啟用。正式入口不包含 p-limit 專用資料；本機 Mock 可載入忽略目錄中的測試 States。組員之後可從授權資料層提供 `WorkspaceDataset[]`，不用建立第二套網站。
 
 ## 安裝與啟動
 
-以下 PowerShell 指令從 Repository 根目錄開始。Slidev 需要 Node.js 22.12 以上；本機使用 Node.js 22.22.3 完成測試。若共用 Firebase 套件有額外 Node 版本要求，請與基礎架構負責人確認。
+需要 Node.js 22.12 以上。在 Repository 根目錄：
 
 ```powershell
 Set-Location slide-generator
@@ -14,16 +12,19 @@ npm.cmd ci
 Push-Location slide-export
 npm.cmd ci
 Pop-Location
+Push-Location state-replay
+npm.cmd ci
+Pop-Location
 ```
 
-第一個 `npm.cmd ci` 安裝網站與 Markdown 預覽套件；第二個安裝 Slidev 與匯出套件。`ci` 使用各自的 lockfile，並重建該目錄的 `node_modules`，不要在開發服務執行中重裝。PPTX 匯出需要 Playwright Chromium；若安裝時未下載瀏覽器，在 `slide-export` 執行：
+三個 `ci` 各自使用 lockfile 安裝網站、Slidev 與歷史重建工具。不要在服務運行時重新安裝它使用的 node_modules。PPTX／溢出檢查需要 Chromium；若尚未安裝，從 `slide-export` 執行：
 
 ```powershell
 $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) 'node_modules/.playwright-browsers'
 node node_modules/playwright-chromium/cli.js install chromium
 ```
 
-在編輯器建立或更新 `slide-generator/.env.local`，只填入所用 Provider 的設定，例如：
+在編輯器設定 `slide-generator/.env.local`，例如（只放佔位文字）：
 
 ```dotenv
 LLM_PROVIDER=gemini
@@ -31,95 +32,51 @@ GEMINI_API_KEY=replace-locally
 GEMINI_MODEL=replace-with-an-available-model
 ```
 
-這些只是佔位值。請自行填入帳號可用的模型與 Key；不要提交或分享實際 `.env.local`。Groq 與 OpenAI 的設定見 [Report Agent README](../../report-agent/README.md)。Next.js 會讀取 `.env.local`，不需要 `--env-file`；變更環境設定後請重啟開發服務。
+沿用 Report Agent 的 Groq／OpenAI 設定也可以。Key 只在伺服器環境中；`.env.local` 已被 Git 忽略，不要貼出或提交。CLI 使用 `--env-file`，Next.js 自動載入。
 
-從 `slide-generator` 啟動：
+從 `slide-generator` 執行 `npm.cmd run dev`，開啟終端機列出的本機 `/reports`。本頁不會呼叫 Firebase；其他頁面及 `/api/health` 的 Firebase 建置設定仍由基礎架構負責人提供。報告／簡報／歷史載入 API 在 production 保持禁用，尚未完成正式授權、持久化與部署。
 
-```powershell
-npm.cmd run dev
-```
+## 資料來源與歷史重建
 
-開啟 `http://localhost:3000/reports`；若 3000 已被使用，依終端機印出的連接埠開啟 `/reports`。本頁目前使用本機 fixture，不會呼叫 Firebase。其他頁面與 `/api/health` 的 Firebase 設定由基礎架構負責人提供；完整 `next build` 仍需該設定，不能以本頁可開啟代替正式建置驗收。
+輸入 `https://github.com/owner/repo`。只接受公開 GitHub root URL（可含 `.git` 或結尾 `/`），不接受任意主機、私有庫、認證資訊、分支路徑或 query。
+
+- **載入公開 repo**：固定預設分支目前 commit，建立獨立 Repo Snapshot。不是正式 Project State，不能從單一版本推論近期進度；功能、里程碑及風險尚未評估。
+- **載入已重建的歷史 State**：讀取 [state-replay](../../state-replay/README.md) 的本機有效結果。先以獨立工具逐版分析，再載入網頁。可以載入尚未全部完成的結果，選單明示 `X/Y`。網頁不啟動長時間的重建工作。
+
+歷史工具保留每一版、`latest.json`、合併時間與進度紀錄，支援續跑；產物均被忽略，不提交 Git。每版符合原有 Schema，但 generator 明示歷史重建，評估不完整處有 data_gaps。`updated_at` 是實際收集／分析時間；選單日期是原始合併時間。最新版代表最後成功重建的 merge，不一定是今日 HEAD。
 
 ## 手動驗收
 
-1. 選擇 Demo 範例或 p-limit 歷史快照。p-limit 可勾選「彙整合併區間」，選開始版；上方選取的快照是結束版，兩端都包含。
-2. 填寫「報告生成需求」或留空，按「生成報告」。留空時會以工程師向主管匯報近期進度的方式撰寫；架構不固定。需要實作細節時，可開啟 p-limit 的按需 repo 讀取，僅讀結束版 commit 的已收錄歷史片段。
-3. 切換編輯、檢視與雙欄；手動修改，再連續提出兩次對話修改，確認使用最新草稿且保留必要上下文。編輯區與報告預覽在桌面最高 560px、窄螢幕最高 420px，長內容在區塊內捲動。雙欄的兩區依捲動比例雙向同步，並在切換檢視模式時保留比例位置；這不是逐行對應，Markdown 與排版內容的高度可能不同。
-4. 測試新增、拆分或合併頁面。每頁以 `#` 標題開始，需有非空的 Speaker Notes／講稿；Sources 每頁選用。缺少講稿等格式問題會要求模型修正一次，失敗則保留原稿。
-5. 確認報告內容後勾選確認框，按「產生 Slidev 原稿」。預設由 LLM 選擇每頁轉場、逐項顯示與基本版面，保留文字、講稿與來源。若要不呼叫 LLM 的轉換，選擇「預設（不呼叫 LLM）」或固定轉場。
-6. 分別測試網頁播放、兩種 PPTX 格式、可攜式 ZIP。它們沿用已生成的設定，不再次請模型安排特效。網頁中用方向鍵測試逐項顯示與換頁；PPTX 是每頁的最終靜態內容，不保留網頁動畫。ZIP 解壓縮後執行其中的 `start.cmd`，播放電腦需有 Node.js 22.12 以上。
-7. 修改報告或轉場後，先重新產生原稿再匯出；成功重新產生原稿後，需重新建立網頁播放連結。
+1. 載入 repo 現況，或已重建的歷史 State。歷史模式可選結束版、勾選「彙整合併區間」並選開始版；兩端包含，最多 100 次合併。報告的目前狀態取結束版，區間另供逐筆變更證據。
+2. 填寫報告生成需求，預設先介紹整份專案的用途與架構，再呈現近期成果與待處理問題；可自行指定對象、章節、語言或頁數。留空也沿用相同方向，不會虛構缺少證據的進度或問題。有 code-only 資料時只說明能證實的現況。
+3. 有可讀 repo 的資料來源預設開啟按需讀取，可自行取消。模型先看檔案清單選片段，後端驗證 Git blob hash，再提供正文；固定到所選 commit，不自動開啟任意來源連結。
+4. 切換編輯／檢視／雙欄並手動編輯，雙欄依捲動比例同步。確認網頁沒有對話欄、修改要求、預覽修改或接受修改入口；版面改為資料來源與報告雙欄，手機單欄。
+5. 測試「復原上一版／恢復剛才的修改」及下載 Markdown。生成、手動編輯、復原／恢復版本後自動執行本機基本檢查，僅有格式問題或規則提醒時顯示內容，不顯示頁數／分鐘／待核對數摘要，也沒有手動檢查按鈕。不呼叫 LLM、不改寫報告；規則檢查不能證明事實正確。資料來源旁可展開查看功能、風險與資料缺口的定義。草稿儲存／載入已從網頁停用；重新整理會清除目前草稿。每頁需保留非空講稿；Sources 選用。
+6. 確認內容後產生 Slidev 原稿。預設另請 LLM 安排轉場／逐項顯示／基本版面；固定轉場可不呼叫模型。展開「檢查 Slidev Markdown」，可直接「編輯 slides.md」的文字、講稿、分頁、基本版面、轉場及縮放；不會變更上方報告或 State。下載、播放、PPTX、ZIP 與溢出檢查直接使用編輯後的原稿，不另呼叫模型。修改原稿會清除舊播放連結與檢查結果；重新生成前會確認是否取代手動修改。原稿同樣只存在目前頁面，需下載保留。
+7. 驗收網頁播放、兩種 PPTX、可攜式 ZIP，及「檢查投影片溢出」。溢出檢查實際逐頁量測，不自動改文或拆頁，也不代表排版美觀／事實正確。
+8. 改報告／轉場後，重新生成原稿及播放連結。切換資料前會提醒；失敗載入／生成／修改不應清除目前草稿。
 
-草稿、對話與特效設定只保留在目前頁面，重新整理會清除；需要保留的內容請先下載。網頁播放連結約有效兩小時，且需要本機 Next.js 持續運行。可攜式 ZIP 不依賴原網站，但目前不支援圖片打包。
+目前網頁停用所有來源的草稿儲存／載入。草稿與最多 20 個復原版本只在頁面記憶體，重新整理會清除，請下載需保留的 Markdown。既有已存草稿及底層儲存 API 保留。播放連結約有效兩小時，需要本機 Next.js 持續執行。可攜式 ZIP 解壓後執行 `start.cmd`，播放電腦需有 Node.js；目前不支援圖片打包。PPTX 不保留網頁動畫，請人工確認字型與排版。
 
-對話修改預設先顯示差異，接受後才套用，亦可捨棄保留原稿。工作區最多保留 20 個操作版本，可復原／重做報告及對話；版本仍只在記憶體，離開前會提醒下載。可檢查目前草稿並下載報告與審閱 JSON；提醒不等於事實已驗證。長操作可取消，模型／HTTP 次數與用量在回覆後顯示。相同資料與需求的 repo 選檔可能命中短期快取。
+## 模型與讀取限制
 
-產生原稿後可按「檢查投影片溢出」，實際以 Chromium 逐頁檢查；它不會自動刪文或拆頁。建立網頁簡報後，可展開「直接預覽網頁簡報」。版面檢查是額外的渲染步驟，與一般網頁建置不同，需安裝 Chromium。
+載入資料、預覽、選區間、手動編輯、下載與渲染不呼叫 LLM。生成／修改報告會呼叫；開啟 repo 讀取通常再加一次選檔。兩個步驟各至多修正一次，整次報告操作最多 4 次模型呼叫。相同輸入可命中最多 20 組、5 分鐘的已驗證 context 快取；不快取報告。
 
-## 哪些操作會呼叫 LLM
+公開 repo 使用匿名 GitHub GET，可能限流。檔案清單需完整未截斷，最多 1,500 個符合條件的文字檔；單檔最多 256,000 bytes；供模型的片段最多 4 段、各 180 行、總共 24,000 字元。環境／敏感名稱檔案、依賴與建置目錄、lockfile、symlink、submodule、binary、LFS 指標不讀取。檔名目前限 ASCII 安全字元、正文 UTF-8。限流、過大資料或完整性失敗會明確停止，不能把局部資料說成完整分析。
 
-| 操作 | LLM 請求 |
-| --- | --- |
-| 選快照、選區間、查看 State、手動編輯、Markdown 預覽與下載 | 不呼叫 |
-| 生成報告或對話修改 | 呼叫；格式錯誤時至多一次修正 |
-| 開啟按需 repo 讀取 | 另加一次選檔；選檔格式錯誤時至多一次修正，即使最後不需讀檔仍有選檔請求 |
-| LLM 自動安排簡報特效 | 另加一次安排請求；格式錯誤時至多一次修正 |
-| 固定轉場的 Markdown 轉換、建立網頁、PPTX 或 ZIP 匯出 | 不呼叫；使用已確認的報告與特效設定 |
-
-Provider 的 HTTP 重試另計。503 表示供應商暫時無法服務，本程式對明確的暫時性 HTTP 錯誤最多嘗試三次；不會自動換模型或要求升級付費。失敗時會標示選檔／生成／修改階段，保留原稿與尚未送出的修改要求。
-
-## 不消耗 API 額度的檢查
+## 自動驗收與交接
 
 從 `slide-generator` 執行：
 
 ```powershell
-npm.cmd run lint
-node node_modules/typescript/bin/tsc --noEmit --incremental false
-Push-Location report-agent
-node --test
-Pop-Location
-Push-Location slide-export
-node --test
-Pop-Location
-Push-Location test-data/p-limit
-node --test
-Pop-Location
+node report-agent/verify.mjs
 ```
 
-需要測試實際網頁時，先保持現有 Next.js 開發服務執行，再開另一個終端機，從 `slide-generator` 執行：
+加入 `--browser` 驗證實際本機網頁、歷史載入與 compiled routes；加入 `--render` 會再實際建置 Slidev、匯出兩種 PPTX／ZIP、檢查正常與溢出頁。兩者均需先啟動既有 Next.js。所有模型回覆均模擬，不讀取真實 Key 或發送模型 API 請求。歷史測試使用小型模擬 repo，不需要下載第三方歷史資料。
 
-```powershell
-$env:REPORT_TEST_URL = 'http://localhost:3000'
-$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) 'slide-export/node_modules/.playwright-browsers'
-Push-Location report-agent
-node web-check.mjs
-node repository-next-check.mjs
-Pop-Location
-Push-Location slide-export
-node auto-effects-browser-check.mjs
-Pop-Location
-```
+自動測試不能代替真實模型的品質驗收。正式 PR 前應手動重建少量合併、核對 State chain／最新版／來源，再在網頁驗收報告。完整建置與部署仍需組員協調。請參考 [PR 交接](PR-HANDOFF.md)、[改善紀錄](OPTIMIZATIONS.md)、[Report Agent](../../report-agent/README.md) 和 [Slidev 匯出](../../slide-export/README.md)。
+## Local Mock storage
 
-請依服務實際連接埠調整 URL；若 Chromium 使用預設安裝位置，可省略 `PLAYWRIGHT_BROWSERS_PATH`。這些檢查模擬 LLM 回覆，不讀取實際 API Key，也不向 Provider 發送請求。特效檢查會真的建置簡報、開啟 Chromium、匯出兩種 PPTX 與 ZIP，所需時間較長。自動測試不保證真實模型的文字品質、頁數遵從程度或服務可用性，仍需手動驗收。
+The latest stored State is selected by default. Older versions and supported merge-range controls are collapsed under **歷史版本／報告區間**; **回到最新狀態** returns from a historical selection. `base_state_id` links snapshots, while each State's `trigger` describes only its own merge. Selecting one State does not automatically send all history to the model. Mock datasets with accepted merge metadata support inclusive range aggregation in both generation and revision, independently of repo file reads; States without merge metadata support only version selection. See the Mock README for metadata import. Saved Mock drafts also restore the chosen range.
 
-## 本版範圍與後續整合
-
-- 已串接本機 fixture、報告編輯與對話、歷史區間、按需 repo 片段及三種簡報輸出。
-- 尚未接上 Firestore 讀取與草稿／對話持久化，也未完成登入、額度控管或正式 Vercel 匯出部署。
-- 報告與簡報 API 目前在 production 禁用。Firebase 與部署環境須與基礎架構負責人協調。
-- 上游負責完整 Project State Schema 驗證；Report Agent 只檢查本模組需要的資料關係與來源，不代替完整 Schema 驗證。
-
-詳見 [Report Agent](../../report-agent/README.md)、[Slidev 匯出](../../slide-export/README.md) 與 [p-limit 歷史資料](../../test-data/p-limit/README.md)。
-
-## Public GitHub repository input
-
-At `/reports`, enter `https://github.com/owner/repo` in **公開 GitHub repo 網址**, then select **載入公開 repo**. Root URLs with `.git` or a trailing slash are accepted. Loading makes anonymous GitHub GET requests and does not call an LLM. It resolves the default branch once, then pins generation and revision to that exact commit. Reloading explicitly selects the then-current version and clears the workspace after confirmation; a failed import preserves the existing draft.
-
-This creates a **Repo Snapshot**, a separate report-evidence contract, not an Intent Supervisor Project State. It does not assess feature completion, milestones or risks, and does not import historical PR ranges. Those fields remain unassessed. Use it to explain the current implementation; it cannot establish recent progress without a historical comparison. The original Project State and p-limit fixture workflows remain available in the dataset selector. Repo Snapshots are not written to Firebase or the official schema.
-
-Repository reading starts enabled. Generation/revision first ask the configured LLM to select excerpts, then anonymously download only selected blobs from the pinned tree and verify their Git SHA-1. Wording-only revisions can skip reading. The existing report JSON, edit validation, review, Markdown editor and Slidev/PPTX/portable exports are shared with the original flow. Turning reading off limits the model to metadata and the existing report; it cannot inspect the implementation.
-
-Limits: public GitHub only; no private repos, authentication tokens, arbitrary hosts, branch URLs or historic PR ingestion. Anonymous GitHub rate limits apply; the UI reports GitHub errors separately from LLM errors. Complete, non-truncated trees are required; at most 1,500 eligible text files, 256,000 bytes per file, four selected excerpts of up to 180 lines and 24,000 characters total. Common source/documentation formats are allowed; environment files, sensitive-name paths, dependencies/build output, lockfiles, symlinks, submodules, binary files and LFS pointers are excluded. Path names currently use ASCII letters, digits, dots, hyphens and underscores. Downloaded files must be UTF-8. Requests have size/time limits; large repositories may require a future scoped-inventory feature. Endpoints remain local-development-only until authentication and hosting are coordinated.
-
-Run `node report-agent/verify.mjs --browser` from `slide-generator` to include the public-repo import/generation browser regression with mocked GitHub and LLM responses. No real model calls or keys are needed.
+The report workspace now offers local file-backed Mock storage for Project State and report drafts, with the existing conversation storage retained internally. Use **載入 Mock 資料** (or **建立 Mock 範例資料** for the schema examples) to load State. Draft save/load is currently disabled in the website; download Markdown before refreshing. Storage APIs and previously saved drafts are retained internally. See [Mock setup, contract and tests](../../mock-firebase/README.md). This does not test real Firebase or change the teammate's Firebase initialization or health route.

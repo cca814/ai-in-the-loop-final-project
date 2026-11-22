@@ -8,6 +8,7 @@ import { exportPortable } from './portable.js';
 import { planPresentation } from './presentation-plan.js';
 import { createClient } from '../report-agent/llm.js';
 import { ConfigurationError, ProviderError } from '../report-agent/errors.js';
+import { validateEditedSlides, SlideSourceError } from './edited-slides.js';
 
 export function slideHandler(mode, { complete, render = exportPptx, buildWeb = buildWebSlides, archive = exportPortable, inspectLayout = checkLayout, production = process.env.NODE_ENV === 'production' } = {}) {
   return async function POST(request) {
@@ -30,14 +31,16 @@ export function slideHandler(mode, { complete, render = exportPptx, buildWeb = b
       if (typeof body.report !== 'string' || body.report.length > 100_000) throw new Error('Invalid report');
       // Web reports support Markdown, not executable Vue/HTML components.
       if (/<\/?[a-z][^>]*>|\{\{/i.test(body.report)) throw new Error('Unsupported markup');
-      if (body.transition === 'auto' && mode !== 'slides' && body.presentationPlan === undefined) throw new Error('Generate the presentation plan first');
+      if (body.transition === 'auto' && mode !== 'slides' && body.slides === undefined && body.presentationPlan === undefined) throw new Error('Generate the presentation plan first');
       presentationPlan = body.presentationPlan;
-      slides = reportToSlides(body.report, { transition: body.transition === 'auto' ? undefined : body.transition || undefined, presentationPlan });
+      slides = mode !== 'slides' && body.slides !== undefined
+        ? validateEditedSlides(body.slides)
+        : reportToSlides(body.report, { transition: body.transition === 'auto' ? undefined : body.transition || undefined, presentationPlan });
       format = body.format || 'pptx';
       if (!['pptx', 'pptx-editable'].includes(format)) throw new Error('Unsupported format');
     } catch (error) {
       if (error.code === 'REQUEST_TOO_LARGE') return Response.json({ error: 'Request too large.' }, { status: 413 });
-      const message = error instanceof ReportFormatError ? error.publicMessage : '報告格式或匯出選項不符；講稿與來源支援中英文標題，網頁匯出不接受 HTML 或 Vue。';
+      const message = error instanceof SlideSourceError ? error.message : error instanceof ReportFormatError ? error.publicMessage : '報告格式或匯出選項不符；講稿與來源支援中英文標題，網頁匯出不接受 HTML 或 Vue。';
       return Response.json({ error: message }, { status: 400 });
     }
     if (mode === 'slides') {

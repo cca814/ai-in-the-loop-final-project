@@ -1,3 +1,3 @@
-import { fixtureReportHandler } from '../../../../test-data/p-limit/adapters/report-handler.js';
+import { localReportHandler } from '../../../../state-replay/integration.js';
 
-export const POST = fixtureReportHandler('revise');
+export const POST = localReportHandler('revise');

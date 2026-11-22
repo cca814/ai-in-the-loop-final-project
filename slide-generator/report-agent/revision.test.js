@@ -189,3 +189,27 @@ test('exact-match correction uses the original report, and provider errors are n
   await assert.rejects(reviseReport({ state, report: 'Original', request: 'Reword' }, { complete: async () => { networkCalls++; throw new Error('Network failure'); } }), /Network failure/);
   assert.equal(networkCalls, 1);
 });
+
+test('directory-per-page revisions receive normalized requirements up front without a false one-page limit', async () => {
+  const report = `${page('原架構', '既有說明。')}\n\n---\n\n${page('現況', '既有狀況。')}`;
+  const context = { repository: state.repository.full_name, commit: state.source_commit_sha, files: [], inventory: { source_id: 'repo-tree', directories: ['.github', '.github/workflows', 'scripts'], complete: true, url: `${state.repository.url}/tree/${state.source_commit_sha}` } };
+  const replacement = ['.github', '.github/workflows', 'scripts'].map(path => page(path, '此資料夾存在；尚未提供足夠內容判斷用途。')).join('\n\n---\n\n');
+  const result = await reviseReport({ state, report, request: '介紹實際資料夾，一個資料夾一頁' }, { repositoryContext: context, complete: async messages => {
+    const payload = JSON.parse(messages[1].content);
+    assert.equal(payload.current_page_count, 2);
+    assert.deepEqual(payload.requirements, { pagesPerDirectory: 1 });
+    assert.deepEqual(payload.repository_context.inventory.directories, context.inventory.directories);
+    return JSON.stringify({ changes: [{ old: report, new: replacement }], message: '依實際目錄分頁；用途仍待證據。' });
+  } });
+  assert.equal(parseReport(result.report).length, 3);
+  assert.equal(result.report, replacement);
+});
+
+test('revision page-count errors report expected and actual counts without exposing raw model output', async () => {
+  const report = `${page('第一頁', '原稿。')}\n\n---\n\n${page('第二頁', '原稿。')}`;
+  const response = await reportHandler('revise', { production: false, complete: async () => JSON.stringify({ changes: [], message: 'Not applied' }) })(new Request('http://localhost/api/reports/revise', { method: 'POST', body: JSON.stringify({ state, report, request: '整份報告改成一頁', history: [] }) }));
+  assert.equal(response.status, 502);
+  const result = await response.json();
+  assert.equal(result.code, 'REVISION_REQUIREMENT_INVALID');
+  assert.match(result.error, /要求整份報告 1 頁，修改結果為 2 頁/);
+});

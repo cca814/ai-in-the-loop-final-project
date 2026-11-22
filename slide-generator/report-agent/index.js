@@ -19,6 +19,8 @@ export async function generateReport(state, { complete, repositoryContext, focus
   refs.set('repository', { url: prepared.repository.url, title: prepared.repository.full_name });
   for (const ref of extraSources) refs.set(ref.id, ref);
   const messages = buildMessages(prepared, { repositoryContext, focus, mergeHistory });
+  if (Object.keys(requirements).length) messages[1].content = JSON.stringify({ ...JSON.parse(messages[1].content), requirements });
+  if (requirements.pagesPerDirectory) messages[0].content += ' requirements.pagesPerDirectory=1 allocates one page per evidenced directory, not a one-page report. Use the supplied directory inventory, do not invent folders or treat root files as directories, and do not infer directory purposes without supporting excerpts or State. Explain missing input rather than fabricating a directory description.';
   for (let attempt = 0; ; attempt++) {
     const response = await complete(messages);
     try {

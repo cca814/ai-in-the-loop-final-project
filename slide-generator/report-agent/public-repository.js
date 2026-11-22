@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { safePath, RepositoryContextError } from './repository-context.js';
+import { safePath, safeDirectoryPath, RepositoryContextError } from './repository-context.js';
 import { readRequestJson } from './operation.js';
 
 const shaPattern = /^[a-f0-9]{40}$/;
@@ -46,11 +46,18 @@ export function publicRepositoryClient({ fetchImpl = fetch, signal } = {}) {
     if (commit.sha !== state.source_commit_sha || !shaPattern.test(treeSha)) throw new PublicRepositoryError('REPOSITORY_IDENTITY_INVALID', 'Commit 驗證失敗。');
     const tree = await get(`${repo.full_name}/git/trees/${treeSha}?recursive=1`, 8_000_000);
     if (tree.sha !== treeSha || tree.truncated || !Array.isArray(tree.tree)) throw new PublicRepositoryError('REPOSITORY_TREE_INCOMPLETE', '檔案清單不完整或過大，目前無法安全選檔。');
+    const allDirectories = tree.tree.filter(entry => entry.type === 'tree');
+    const directories = [];
+    for (const entry of allDirectories.filter(entry => entry.mode === '040000' && shaPattern.test(entry.sha) && safeDirectoryPath(entry.path)).sort((a, b) => a.path.localeCompare(b.path))) {
+      if (directories.length >= 100 || directories.join('').length + entry.path.length > 8000) break;
+      directories.push(entry.path);
+    }
+    const directoryInventory = { directories, complete: directories.length === allDirectories.length };
     const entries = tree.tree.filter(file => file.type === 'blob' && ['100644', '100755'].includes(file.mode) && safePath(file.path) && !/(^|\/)(node_modules|vendor|dist|build)\//.test(file.path) && !/(?:lock\.json|\.lock|\.min\.[a-z]+)$/i.test(file.path) && Number.isInteger(file.size) && file.size <= maxFileBytes && shaPattern.test(file.sha));
     if (!entries.length || entries.length > 1500) throw new PublicRepositoryError('REPOSITORY_FILE_LIMIT', '可讀取檔案為零或超過 1,500 個，請改用較小的 repository。');
     const files = Object.fromEntries(entries.map(file => [file.path, { sha: file.sha, size: file.size }]));
     const loaded = new Map();
-    return { repository: repo.full_name, commit: { sha: commit.sha }, files, async readFile(path) {
+    return { repository: repo.full_name, commit: { sha: commit.sha }, files, directoryInventory, async readFile(path) {
       if (!Object.hasOwn(files, path)) throw new PublicRepositoryError('REPOSITORY_FILE_INVALID', '檔案不在此 commit 的允許清單中。');
       if (loaded.has(path)) return loaded.get(path);
       if (loaded.size >= 8) throw new PublicRepositoryError('REPOSITORY_FILE_LIMIT', '本次檔案下載數已達上限。');

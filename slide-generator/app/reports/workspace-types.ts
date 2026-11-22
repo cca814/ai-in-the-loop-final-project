@@ -11,6 +11,8 @@ export type WorkspaceState = {
 
 export type WorkspaceDataset = {
   id: string; label: string;
+  replayId?: string;
+  mockId?: string;
   supportsHistory?: boolean; supportsRepository?: boolean;
   snapshots: { id: string; label: string; state: WorkspaceState }[];
 };

@@ -10,15 +10,19 @@ const env = { ...process.env, NODE_ENV: 'test', REPORT_TEST_URL: process.env.REP
 const checks = [
   ['Agent tests', ['--test', '--test-reporter=dot'], join(root, 'report-agent')],
   ['Slide export tests', ['--test', '--test-reporter=dot'], join(root, 'slide-export')],
-  ['Historical fixture tests', ['--test', '--test-reporter=dot'], join(root, 'test-data/p-limit')],
+  ['Generic state replay tests', ['--test', '--test-reporter=dot'], join(root, 'state-replay')],
+  ['Mock storage tests', ['--test', '--test-reporter=dot'], join(root, 'mock-firebase')],
   ['Lint', ['node_modules/eslint/bin/eslint.js']],
   ['TypeScript', ['node_modules/typescript/bin/tsc', '--noEmit', '--incremental', 'false']],
 ];
 if (flags.has('--browser') || flags.has('--render')) checks.push(
   ['Workspace browser', ['report-agent/web-check.mjs']],
-  ['Review and cancellation browser', ['report-agent/optimizations-browser-check.mjs']],
+  ['Walking skeleton browser', ['report-agent/skeleton-browser-check.mjs']],
   ['Public repository browser', ['report-agent/public-repository-browser-check.mjs']],
-  ['Compiled historical routes', ['report-agent/repository-next-check.mjs']],
+  ['Historical state browser', ['state-replay/browser-check.mjs']],
+  ['Mock storage browser', ['mock-firebase/browser-check.mjs']],
+  ['Mock historical report browser', ['mock-firebase/history-browser-check.mjs']],
+  ['Compiled generic history routes', ['report-agent/repository-next-check.mjs']],
 );
 if (flags.has('--render')) checks.push(['Actual Slidev builds and exports', ['slide-export/auto-effects-browser-check.mjs']]);
 for (const [name, args, cwd = root] of checks) {

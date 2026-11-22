@@ -54,7 +54,8 @@ export async function serveWebSlides(id, assets = []) {
     let path = join(directory, 'dist', ...assets);
     // Slidev's history router needs the HTML entry on direct slide navigation.
     if (!assets.length || !extname(assets.at(-1))) path = join(directory, 'dist/index.html');
-    const file = await readFile(path);
+    // Generated playback files exist at runtime, not in the deployment bundle.
+    const file = await readFile(/* turbopackIgnore: true */ path);
     const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ico': 'image/x-icon' };
     return new Response(new Uint8Array(file), { headers: { 'Content-Type': types[extname(path)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer' } });
   } catch { return new Response('Not found', { status: 404 }); }

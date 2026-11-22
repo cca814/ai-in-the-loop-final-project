@@ -1,250 +1,85 @@
-import { loadHistoricalRepository } from '../test-data/p-limit/adapters/repository-loader.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { retrieveRepositoryContext as retrieveCoreContext, repositorySources } from './repository-context.js';
+import { sample } from '../state-replay/testing/sample.js';
+import { retrieveRepositoryContext, repositorySources } from './repository-context.js';
+import { reportHandler } from './http.js';
 import { generateReport } from './index.js';
 import { reviseReport } from './revision.js';
-import { fixtureReportHandler as reportHandler } from '../test-data/p-limit/adapters/report-handler.js';
-import { historicalArchiveUrls } from '../test-data/p-limit/adapters/repository-archives.js';
 import { ProviderError } from './errors.js';
 
-const retrieveRepositoryContext = (args, options) => retrieveCoreContext(args, { loadSnapshot: loadHistoricalRepository, ...options });
+const fixture = sample(); const state = fixture.states.at(-1);
+const range = { path: 'index.js', start_line: 1, end_line: 3 };
+const plan = files => JSON.stringify({ files, reason: 'Read current implementation' });
+const loadSnapshot = async current => {
+  const index = fixture.states.findIndex(item => item.repository.full_name === current.repository.full_name && item.source_commit_sha === current.source_commit_sha);
+  if (index < 0) throw new Error('Unknown snapshot');
+  return structuredClone(fixture.snapshots[index]);
+};
+const retrieve = (args, options) => retrieveRepositoryContext(args, { loadSnapshot, ...options });
+const handler = (mode, options) => reportHandler(mode, { retrieveContext: (args, dependencies) => retrieve(args, dependencies), ...options });
+const request = body => new Request('http://localhost/api/reports/generate', { method: 'POST', body: JSON.stringify(body) });
+const pages = id => JSON.stringify({ pages: [{ title: '實作現況', bullets: ['可呼叫工作函式。'], script: '說明目前的工作執行實作。', source_ids: [id] }] });
 
-const root = new URL('../test-data/p-limit/', import.meta.url);
-const inventory = JSON.parse(await readFile(new URL('inventory.json', root)));
-const state = JSON.parse(await readFile(new URL('states/021-pr-109.json', root)));
-const json = value => JSON.stringify(value);
-const plan = files => json({ files, reason: files.length ? 'Inspect the implementation.' : 'Wording only.' });
-const range = { path: 'index.js', start_line: 118, end_line: 130 };
-const pages = source => ({ pages: ['Project Overview', 'Feature Progress', 'Recent Changes', 'Risks and Issues'].map(title => ({ title, bullets: ['Review the supplied evidence.'], script: 'Explain implementation without changing snapshot statuses.', source_ids: [source] })) });
-const request = body => new Request('http://localhost:3000/api/reports/generate', { method: 'POST', body: json(body) });
-
-test('invalid selection is corrected once using exact commit, file bounds and the original task', async () => {
+test('planner receives metadata only, selects exact-commit verified excerpts and preserves inputs', async () => {
   const original = structuredClone(state);
-  const history = [{ role: 'user', content: 'Earlier wording request' }];
-  for (const [invalid, issue] of [
-    ['not JSON', 'SELECTION_JSON_INVALID'],
-    [plan([{ ...range, path: '../index.js' }]), 'SELECTION_PATH_INVALID'],
-    [plan([{ path: 'index.js', start_line: 1, end_line: 1000 }]), 'SELECTION_RANGE_INVALID'],
-    [plan(Array(5).fill(range)), 'SELECTION_FORMAT_INVALID'],
-    [plan([range, range]), 'SELECTION_DUPLICATE_RANGE'],
-    [plan([{ ...range, start_line: '118' }]), 'SELECTION_RANGE_INVALID'],
-  ]) {
-    let calls = 0;
-    const context = await retrieveRepositoryContext({ state, mode: 'revise', request: 'Explain clearQueue', report: 'Manually edited report', history }, { complete: async messages => {
-      calls++;
-      const input = JSON.parse(messages[1].content);
-      assert.equal(input.commit, state.source_commit_sha);
-      assert.equal(input.current_report_excerpt, 'Manually edited report');
-      assert.deepEqual(input.conversation_history, history);
-      if (calls === 1) return invalid;
-      const correction = JSON.parse(messages.at(-1).content);
-      assert.equal(correction.correction_required, issue);
-      assert.equal(correction.limits.maximum_ranges, 4);
-      assert.equal(correction.limits.maximum_lines_per_range, 180);
-      assert.equal(correction.limits.maximum_total_characters, 24000);
-      assert.ok(correction.available_files.every(file => Number.isInteger(file.lines) && !('content' in file)));
-      return plan([range]);
-    } });
-    assert.equal(calls, 2);
-    assert.equal(context.files[0].start_line, 118);
-    assert.match(context.files[0].content, /clearQueue/);
-    assert.deepEqual(state, original);
-  }
-});
-
-test('planner does not resend provider or archive integrity errors and supports disabling correction', async () => {
-  let calls = 0;
-  await assert.rejects(retrieveRepositoryContext({ state, mode: 'generate' }, { complete: async () => { calls++; throw new ProviderError(503); } }), ProviderError);
-  assert.equal(calls, 1);
-  calls = 0;
-  const snapshot = await loadHistoricalRepository(state);
-  snapshot.files['index.js'].content += 'corrupted';
-  await assert.rejects(retrieveRepositoryContext({ state, mode: 'generate' }, { loadSnapshot: async () => snapshot, complete: async () => { calls++; return plan([range]); } }), /integrity/);
-  assert.equal(calls, 1);
-  calls = 0;
-  await assert.rejects(retrieveRepositoryContext({ state, mode: 'generate' }, { maxCorrectionRetries: 0, complete: async () => { calls++; return 'bad JSON'; } }), error => error.code === 'SELECTION_JSON_INVALID' && error.correctionAttempts === 0);
-  assert.equal(calls, 1);
-});
-
-test('full 21-merge report proceeds after selection correction and never writes after exhausted correction', async () => {
-  const body = { state, useRepository: true, focus: '弄出整個專案歷史的完整報告', mergeRange: { startCommit: inventory.entries[0].source_commit_sha, endCommit: state.source_commit_sha } };
-  let calls = 0;
-  const response = await reportHandler('generate', { production: false, complete: async messages => {
-    calls++;
-    const input = JSON.parse(messages[1].content);
-    if (input.available_files) {
-      assert.equal(input.current_request, body.focus);
-      return calls === 1 ? plan([{ path: 'index.js', start_line: 1, end_line: 1000 }]) : plan([range]);
-    }
-    assert.equal(input.merge_history.merges.length, 21);
-    assert.equal(input.repository_context.files[0].start_line, 118);
-    return json(pages('repo-file-1'));
-  } })(request(body));
-  assert.equal(response.status, 200);
-  const output = await response.json();
-  assert.equal(output.mergeRange.count, 21);
-  assert.equal(output.repository.commit, state.source_commit_sha);
-  assert.equal(calls, 3);
-  calls = 0;
-  const failed = await reportHandler('revise', { production: false, complete: async () => { calls++; return plan([{ ...range, path: '../secret.txt' }]); } })(request({ ...body, report: 'Keep manual wording.', request: 'Explain the history', history: [] }));
-  const error = await failed.json();
-  assert.equal(failed.status, 502);
-  assert.equal(error.code, 'REPOSITORY_SELECTION_INVALID');
-  assert.equal(error.selectionIssue, 'SELECTION_PATH_INVALID');
-  assert.match(error.error, /修正一次/);
-  assert.ok(!JSON.stringify(error).includes('secret.txt'));
-  assert.equal(error.report, undefined);
-  assert.equal(calls, 2);
-});
-
-test('all 21 repository archives resolve by exact State SHA, including the earliest version', async () => {
-  assert.deepEqual(Object.keys(historicalArchiveUrls).sort(), inventory.entries.map(entry => entry.file).sort());
-  for (const entry of inventory.entries) {
-    const historical = JSON.parse(await readFile(new URL(`states/${entry.file}`, root)));
-    const input = await loadHistoricalRepository(historical);
-    assert.equal(input.commit.sha, historical.source_commit_sha);
-    if (entry.pr === 1) {
-      assert.ok(!input.files['index.d.ts']);
-      assert.ok(!input.files['index.js'].content.includes('limitFunction'));
-    }
-  }
-  await assert.rejects(loadHistoricalRepository({ ...state, source_commit_sha: 'a'.repeat(40) }), /Unknown snapshot/);
-  await assert.rejects(loadHistoricalRepository({ ...state, source_commit_sha: '../bad' }), /Unsupported repository/);
-  await assert.rejects(loadHistoricalRepository({ ...state, repository: { full_name: 'other/repo', url: 'https://github.com/other/repo' } }), /Unsupported repository/);
-});
-
-test('planner sees only State, task and file metadata; writer gets only selected verified lines', async () => {
-  const original = structuredClone(state);
-  let calls = 0;
-  const context = await retrieveRepositoryContext({ state, mode: 'revise', request: 'Explain clearQueue', report: 'Current report' }, { complete: async messages => {
-    calls++;
-    const input = JSON.parse(messages[1].content);
-    assert.deepEqual(input.state, state);
-    assert.equal(input.commit, state.source_commit_sha);
-    assert.equal(input.current_request, 'Explain clearQueue');
-    assert.ok(input.available_files.some(file => file.path === 'index.js'));
-    assert.ok(input.available_files.every(file => !('content' in file)));
-    assert.match(messages[0].content, /untrusted data/);
+  const context = await retrieve({ state, mode: 'generate', request: '說明工作執行方式' }, { complete: async messages => {
+    const payload = JSON.parse(messages[1].content);
+    assert.equal(payload.commit, state.source_commit_sha); assert.ok(payload.available_files.every(file => !('content' in file)));
     return plan([range]);
   } });
-  assert.equal(calls, 1);
-  assert.equal(context.files.length, 1);
-  assert.match(context.files[0].content, /Object.defineProperty\(limitedFunction, 'clearQueue'/);
-  assert.equal(context.files[0].content.split('\n').length, 13);
-  assert.equal(context.files[0].url, `https://github.com/sindresorhus/p-limit/blob/${state.source_commit_sha}/index.js#L118-L130`);
-  assert.equal(repositorySources(context, state)[0].id, 'repo-file-1');
+  assert.equal(context.files[0].content, fixture.snapshots.at(-1).files['index.js'].content);
+  assert.equal(repositorySources(context, state)[0].url, `${state.repository.url}/blob/${state.source_commit_sha}/index.js#L1-L3`);
   assert.deepEqual(state, original);
-  await assert.rejects(generateReport(state, { complete: async messages => {
-    const input = JSON.parse(messages[1].content);
-    assert.deepEqual(input.state, state);
-    assert.deepEqual(input.repository_context, context);
-    assert.match(messages[0].content, /cannot establish a release/);
-    return json(pages('invented-file'));
-  }, repositoryContext: context }), /Unknown response source/);
-  const report = await generateReport(state, { complete: async () => json(pages('repo-file-1')), repositoryContext: context });
-  assert.ok(report.includes(context.files[0].url));
 });
 
-test('wording-only requests can select no files and preserve exact State and history', async () => {
-  const context = await retrieveRepositoryContext({ state, mode: 'revise', request: 'Translate to Chinese' }, { complete: async () => plan([]) });
-  assert.deepEqual(context.files, []);
-  const result = await reviseReport({ state, report: 'Original\nKeep manual edit', request: 'Translate', history: [{ role: 'user', content: 'Earlier turn' }] }, { repositoryContext: context, complete: async messages => {
-    const input = JSON.parse(messages[1].content);
-    assert.deepEqual(input.repository_context.files, []);
-    assert.equal(input.conversation_history[0].content, 'Earlier turn');
-    return json({ changes: [{ old: 'Original', new: '原文' }], message: 'Translated.' });
-  } });
-  assert.equal(result.report, '原文\nKeep manual edit');
-});
-
-test('invalid plans, unsafe paths, excessive ranges and corrupted archives fail before writing', async () => {
-  for (const files of [[{ ...range, path: '../index.js' }], [{ ...range, path: '.env.local' }], [{ ...range, path: 'missing.js' }], [{ ...range, start_line: 0 }], [{ ...range, start_line: 1, end_line: 181 }], Array(5).fill(range), [range, range]]) {
-    await assert.rejects(retrieveRepositoryContext({ state, mode: 'generate' }, { complete: async () => plan(files) }));
+test('invalid path, range, JSON and duplicate selections are corrected once against original request', async () => {
+  for (const invalid of ['bad JSON', plan([{ ...range, path: '../secret.js' }]), plan([{ ...range, start_line: '1' }]), plan([{ ...range, end_line: 181 }]), plan([range, range]), plan(Array(5).fill(range))]) {
+    let calls = 0;
+    const context = await retrieve({ state, mode: 'revise', request: '說明實作', report: 'Manual report', history: [{ role: 'user', content: 'Prior' }] }, { complete: async messages => {
+      calls++; const payload = JSON.parse(messages[1].content); assert.equal(payload.current_report_excerpt, 'Manual report');
+      if (calls === 1) return invalid;
+      assert.ok(JSON.parse(messages.at(-1).content).correction_required); return plan([range]);
+    } });
+    assert.equal(calls, 2); assert.equal(context.files.length, 1);
   }
-  await assert.rejects(retrieveRepositoryContext({ state, mode: 'generate' }, { complete: async () => 'invalid JSON' }), /valid JSON/);
-  const archived = await loadHistoricalRepository(state);
-  archived.files['index.js'].content += '\ncorrupted';
-  await assert.rejects(retrieveRepositoryContext({ state, mode: 'generate' }, { loadSnapshot: async () => archived, complete: async () => plan([range]) }), /integrity/);
-  const mismatched = await loadHistoricalRepository(state);
-  mismatched.commit.sha = 'a'.repeat(40);
-  await assert.rejects(retrieveRepositoryContext({ state, mode: 'generate' }, { loadSnapshot: async () => mismatched, complete: async () => { throw new Error('Must not call'); } }), /identity mismatch/);
 });
 
-test('content budget is enforced and a valid selection clamps its ending line to EOF', async () => {
-  const snapshot = await loadHistoricalRepository(state);
-  const content = 'x'.repeat(24_001);
+test('provider, corrupted blob and identity errors are not retried as selection JSON failures', async () => {
+  let calls = 0;
+  await assert.rejects(() => retrieve({ state, mode: 'generate' }, { complete: async () => { calls++; throw new ProviderError(503); } }), ProviderError); assert.equal(calls, 1);
+  const snapshot = await loadSnapshot(state); snapshot.files['index.js'].content += 'corrupt';
+  await assert.rejects(() => retrieve({ state, mode: 'generate' }, { loadSnapshot: async () => snapshot, complete: async () => plan([range]) }), /integrity/);
+  await assert.rejects(() => retrieve({ state, mode: 'generate' }, { loadSnapshot: async () => ({ ...snapshot, commit: { sha: 'f'.repeat(40) } }), complete: async () => { throw new Error('must not call'); } }), /identity/);
+});
+
+test('excerpt character budget, EOF clamping, unsafe paths and source identity are enforced', async () => {
+  const snapshot = await loadSnapshot(state); const content = 'x'.repeat(24_001);
   snapshot.files['large.md'] = { content, sha: createHash('sha1').update(`blob ${content.length}\0${content}`).digest('hex') };
-  await assert.rejects(retrieveRepositoryContext({ state, mode: 'generate' }, { loadSnapshot: async () => snapshot, complete: async () => plan([{ path: 'large.md', start_line: 1, end_line: 1 }]) }), /budget/);
-  const context = await retrieveRepositoryContext({ state, mode: 'generate' }, { complete: async () => plan([{ path: 'index.js', start_line: 130, end_line: 180 }]) });
-  assert.ok(context.files[0].end_line < 180);
+  await assert.rejects(() => retrieve({ state, mode: 'generate' }, { loadSnapshot: async () => snapshot, complete: async () => plan([{ path: 'large.md', start_line: 1, end_line: 1 }]) }), /budget/);
+  const context = await retrieve({ state, mode: 'generate' }, { complete: async () => plan([{ ...range, end_line: 100 }]) }); assert.equal(context.files[0].end_line, 3);
+  assert.throws(() => repositorySources({ ...context, commit: 'f'.repeat(40) }, state), /identity/);
+  await assert.rejects(() => retrieve({ state, mode: 'generate' }, { complete: async () => plan([{ ...range, path: '.env.local' }]) }));
 });
 
-test('context-enabled revision can cite selected code but rejects new unverified URLs and mismatched commits', async () => {
-  const context = await retrieveRepositoryContext({ state, mode: 'revise', request: 'Explain clearQueue' }, { complete: async () => plan([range]) });
-  const original = structuredClone(state);
-  const report = '# Other\nManual edit\n\n## Speaker Notes\nManual note.\n\n---\n\n# Implementation\nOld fact\n\n## Speaker Notes\nImplementation note.\n\n## Sources\n- [PR](https://github.com/sindresorhus/p-limit/pull/109)';
-  const changes = [{ old: 'Old fact', new: 'The wrapper exposes clearQueue.' }, { old: '## Sources', new: `## Sources\n- [index.js](${context.files[0].url})` }];
-  const revised = await reviseReport({ state, report, request: 'Explain clearQueue' }, { repositoryContext: context, complete: async () => json({ changes, message: 'Added implementation evidence.' }) });
-  assert.ok(revised.report.startsWith('# Other\nManual edit\n'));
-  assert.ok(revised.report.includes(context.files[0].url));
-  assert.deepEqual(state, original);
-  await assert.rejects(reviseReport({ state, report, request: 'Explain' }, { repositoryContext: context, complete: async () => json({ changes: [{ old: 'Old fact', new: '[Unverified](https://example.com/new-source)' }], message: 'Changed' }) }), /unverified source/);
-  await assert.rejects(generateReport(state, { repositoryContext: { ...context, commit: 'a'.repeat(40) }, complete: async () => { throw new Error('Must not call'); } }), /identity mismatch/);
+test('selected code can be cited by generation/revision but fabricated links and source identifiers fail', async () => {
+  const context = await retrieve({ state, mode: 'generate' }, { complete: async () => plan([range]) });
+  const report = await generateReport(state, { complete: async () => pages('repo-file-1'), repositoryContext: context }); assert.ok(report.includes(context.files[0].url));
+  await assert.rejects(() => generateReport(state, { complete: async () => pages('invented'), repositoryContext: context }), /Unknown response source/);
+  const revised = await reviseReport({ state, report: 'Manual wording', request: 'Add implementation source' }, { repositoryContext: context, complete: async () => JSON.stringify({ changes: [{ old: 'Manual wording', new: `Manual wording [code](${context.files[0].url})` }], message: 'Added source' }) }); assert.ok(revised.report.includes(context.files[0].url));
+  await assert.rejects(() => reviseReport({ state, report: 'Manual wording', request: 'Add source' }, { repositoryContext: context, complete: async () => JSON.stringify({ changes: [{ old: 'Manual wording', new: '[fake](https://example.com/unverified)' }], message: 'Added' }) }), /unverified/);
 });
 
-test('generation focus works with State-only mode and does not retrieve files', async () => {
-  const response = await reportHandler('generate', { production: false, retrieveContext: async () => { throw new Error('Must not retrieve'); }, complete: async messages => {
-    const input = JSON.parse(messages[1].content);
-    assert.equal(input.generation_request, 'Focus on queue clearing');
-    assert.deepEqual(input.state, state);
-    assert.ok(!input.repository_context);
-    return json(pages(state.trigger.source_ref_id));
-  } })(request({ state, focus: 'Focus on queue clearing', useRepository: false }));
-  assert.equal(response.status, 200);
-});
-
-test('HTTP orchestrates planning and generation using existing provider-independent JSON contract', async () => {
+test('HTTP selection/generation and no-file revision share JSON contract; invalid options never reach model', async () => {
   let calls = 0;
-  const response = await reportHandler('generate', { production: false, complete: async messages => {
-    calls++;
-    const input = JSON.parse(messages[1].content);
-    if (calls === 1) { assert.equal(input.current_request, 'Explain clearQueue'); return plan([range]); }
-    assert.deepEqual(input.state, state);
-    assert.equal(input.repository_context.commit, state.source_commit_sha);
-    return json(pages('repo-file-1'));
-  } })(request({ state, focus: 'Explain clearQueue', useRepository: true }));
-  assert.equal(response.status, 200);
-  assert.equal(calls, 2);
-  const result = await response.json();
-  assert.equal(result.repository.status, 'read');
-  assert.equal(result.repository.files[0].path, 'index.js');
-  assert.ok(!('content' in result.repository.files[0]));
-  assert.ok(result.report.includes(result.repository.files[0].url));
-});
-
-test('HTTP revision carries manual content/history, returns no-file trace, and rejects client context injection', async () => {
-  let calls = 0;
-  const response = await reportHandler('revise', { production: false, complete: async messages => {
-    calls++;
-    if (calls === 1) return plan([]);
-    const input = JSON.parse(messages[1].content);
-    assert.equal(input.current_report, 'Original\nManual');
-    assert.equal(input.conversation_history[0].content, 'Earlier');
-    return json({ changes: [{ old: 'Original', new: 'Updated' }], message: 'Updated.' });
-  } })(request({ state, report: 'Original\nManual', request: 'Reword', history: [{ role: 'user', content: 'Earlier' }], useRepository: true }));
-  const result = await response.json();
-  assert.equal(response.status, 200);
-  assert.equal(result.report, 'Updated\nManual');
-  assert.equal(result.repository.status, 'not_needed');
-  assert.equal(calls, 2);
-  for (const options of [{ useRepository: 'yes' }, { focus: 123 }, { repository_context: {} }]) {
-    const rejected = await reportHandler('generate', { production: false, complete: async () => { throw new Error('Must not call'); } })(request({ state, ...options }));
-    assert.equal(rejected.status, 400);
-  }
-  const unsupported = await reportHandler('generate', { production: false, complete: async () => { throw new Error('Must not call'); } })(request({ state: { ...state, source_commit_sha: 'a'.repeat(40) }, useRepository: true }));
-  assert.equal(unsupported.status, 422);
-  assert.equal((await unsupported.json()).code, 'REPOSITORY_CONTEXT_UNAVAILABLE');
+  const response = await handler('generate', { production: false, complete: async () => ++calls === 1 ? plan([range]) : pages('repo-file-1') })(request({ state, useRepository: true }));
+  assert.equal(response.status, 200); assert.equal(calls, 2); const output = await response.json(); assert.equal(output.repository.status, 'read'); assert.ok(!('content' in output.repository.files[0]));
+  calls = 0;
+  const revised = await handler('revise', { production: false, complete: async messages => {
+    if (++calls === 1) return plan([]);
+    assert.equal(JSON.parse(messages[1].content).conversation_history[0].content, 'Prior');
+    return JSON.stringify({ changes: [{ old: 'Manual', new: 'Edited' }], message: 'Edited' });
+  } })(request({ state, useRepository: true, report: 'Manual content', request: 'Reword', history: [{ role: 'user', content: 'Prior' }] }));
+  assert.equal(revised.status, 200); assert.equal((await revised.json()).repository.status, 'not_needed');
+  for (const options of [{ useRepository: 'yes' }, { focus: 123 }, { repository_context: {} }, { merge_history: {} }]) assert.equal((await handler('generate', { production: false, complete: async () => { throw new Error('must not call'); } })(request({ state, ...options }))).status, 400);
 });
