@@ -4,11 +4,57 @@ import { readFileSync } from 'node:fs';
 import { reviseReport } from './revision.js';
 import { createClient } from './llm.js';
 import { parseReport } from './report-format.js';
+import { wantsPlainLanguageRewrite } from './revision-validation.js';
+import { reportHandler } from './http.js';
 
 const state = JSON.parse(readFileSync(new URL('../schemas/examples/normal.json', import.meta.url), 'utf8'));
 const reply = result => async () => JSON.stringify(result);
 
 const page = (title, text) => `# ${title}\n\n- ${text}\n\n## Speaker Notes\n\n${text}`;
+
+test('non-technical rewrite corrects a no-op without changing facts, citations or unrelated pages', async () => {
+  const technical = page('核心能力', '以 Promise 佇列控制 concurrency。');
+  const other = page('其他資訊', '保持原稿。');
+  const report = `${technical}\n\n## Sources\n\n- [來源](${state.repository.url})\n\n---\n\n${other}`;
+  const originalState = structuredClone(state);
+  let calls = 0;
+  const result = await reviseReport({ state, report, request: '只改核心能力：報告對象沒有這方面的專業知識，很多術語或概念不懂，要就是說明或是避開' }, { complete: async messages => {
+    calls++;
+    assert.match(messages[0].content, /preserving facts from preserving wording/);
+    assert.match(messages[0].content, /language of the current user request/);
+    assert.equal(JSON.parse(messages[1].content).current_report, report);
+    if (calls === 1) return JSON.stringify({ changes: [], message: 'No changes needed; technical facts must stay.' });
+    assert.equal(JSON.parse(messages.at(-1).content).correction_required, 'REVISION_NO_EFFECT');
+    return JSON.stringify({ changes: [{ old: technical, new: page('核心能力', '讓工作依序等待，並限制同時執行的數量。') }], message: '已將術語換成白話，保留原意。' });
+  } });
+  assert.equal(calls, 2); assert.equal(result.changed, true);
+  assert.ok(result.report.endsWith(other)); assert.ok(result.report.includes(state.repository.url));
+  assert.deepEqual(state, originalState);
+});
+
+test('audience rewrites reject empty, identical and whitespace-only edits, including after correction', async () => {
+  const report = page('能力', '以 Promise 佇列限制同時執行。');
+  for (const changes of [[], [{ old: report, new: report }], [{ old: report, new: report.replace('- 以', '-  以') }]]) {
+    let calls = 0;
+    await assert.rejects(() => reviseReport({ state, report, request: '改成白話，讓非技術人士理解' }, { complete: async () => { calls++; return JSON.stringify({ changes, message: 'Already adapted.' }); } }), { code: 'REVISION_NO_EFFECT' });
+    assert.equal(calls, 2);
+  }
+});
+
+test('plain-language intent is narrow and other legitimate no-op requests remain allowed', async () => {
+  for (const request of ['Explain jargon for a non-technical audience', '避開術語，讓一般人看懂', '改成白話']) assert.equal(wantsPlainLanguageRewrite(request), true);
+  for (const request of ['保留術語', '不要修改，保留原稿', '不用改寫成白話', 'List technical sources']) assert.equal(wantsPlainLanguageRewrite(request), false);
+  const result = await reviseReport({ state, report: page('現況', '原有內容。'), request: '不用修改，保留原稿' }, { complete: reply({ changes: [], message: '已保留。' }) });
+  assert.equal(result.changed, false);
+});
+
+test('persistent audience no-op is reported as a failed revision rather than success', async () => {
+  const response = await reportHandler('revise', { production: false, complete: reply({ changes: [], message: 'No changes needed.' }) })(new Request('http://localhost/api/reports/revise', { method: 'POST', body: JSON.stringify({ state, report: page('能力', 'Promise 佇列。'), request: '改成白話', history: [], useRepository: false }) }));
+  const body = await response.json();
+  assert.equal(response.status, 502); assert.equal(body.code, 'REVISION_NO_EFFECT');
+  assert.match(body.error, /未實際改寫/); assert.equal(body.report, undefined);
+  assert.equal(body.operation.modelCalls, 2);
+});
 
 test('adding a page without notes triggers correction against original draft and preserves manual text', async () => {
   const first = page('Summary', 'Manual wording stays.');

@@ -1,5 +1,7 @@
 # Report workspace：本機啟動與驗收
 
+本波已完成項目、驗收結果與未完成工作見 [改善紀錄](OPTIMIZATIONS.md)。目前也可從 `slide-generator` 執行 `node report-agent/verify.mjs` 統一檢查；加 `--browser` 或 `--render` 需先啟動本機 Next.js。
+
 這是既有 Next.js 專案的 `/reports` 頁面，不是另一套網站。它串接 Project State 範例、報告生成、手動與多輪對話修改，以及 Slidev 網頁簡報、PPTX 和可攜式網頁 ZIP。
 
 ## 安裝與啟動
@@ -43,13 +45,17 @@ npm.cmd run dev
 
 1. 選擇 Demo 範例或 p-limit 歷史快照。p-limit 可勾選「彙整合併區間」，選開始版；上方選取的快照是結束版，兩端都包含。
 2. 填寫「報告生成需求」或留空，按「生成報告」。留空時會以工程師向主管匯報近期進度的方式撰寫；架構不固定。需要實作細節時，可開啟 p-limit 的按需 repo 讀取，僅讀結束版 commit 的已收錄歷史片段。
-3. 切換編輯、檢視與雙欄；手動修改，再連續提出兩次對話修改，確認使用最新草稿且保留必要上下文。
+3. 切換編輯、檢視與雙欄；手動修改，再連續提出兩次對話修改，確認使用最新草稿且保留必要上下文。編輯區與報告預覽在桌面最高 560px、窄螢幕最高 420px，長內容在區塊內捲動。雙欄的兩區依捲動比例雙向同步，並在切換檢視模式時保留比例位置；這不是逐行對應，Markdown 與排版內容的高度可能不同。
 4. 測試新增、拆分或合併頁面。每頁以 `#` 標題開始，需有非空的 Speaker Notes／講稿；Sources 每頁選用。缺少講稿等格式問題會要求模型修正一次，失敗則保留原稿。
 5. 確認報告內容後勾選確認框，按「產生 Slidev 原稿」。預設由 LLM 選擇每頁轉場、逐項顯示與基本版面，保留文字、講稿與來源。若要不呼叫 LLM 的轉換，選擇「預設（不呼叫 LLM）」或固定轉場。
 6. 分別測試網頁播放、兩種 PPTX 格式、可攜式 ZIP。它們沿用已生成的設定，不再次請模型安排特效。網頁中用方向鍵測試逐項顯示與換頁；PPTX 是每頁的最終靜態內容，不保留網頁動畫。ZIP 解壓縮後執行其中的 `start.cmd`，播放電腦需有 Node.js 22.12 以上。
 7. 修改報告或轉場後，先重新產生原稿再匯出；成功重新產生原稿後，需重新建立網頁播放連結。
 
 草稿、對話與特效設定只保留在目前頁面，重新整理會清除；需要保留的內容請先下載。網頁播放連結約有效兩小時，且需要本機 Next.js 持續運行。可攜式 ZIP 不依賴原網站，但目前不支援圖片打包。
+
+對話修改預設先顯示差異，接受後才套用，亦可捨棄保留原稿。工作區最多保留 20 個操作版本，可復原／重做報告及對話；版本仍只在記憶體，離開前會提醒下載。可檢查目前草稿並下載報告與審閱 JSON；提醒不等於事實已驗證。長操作可取消，模型／HTTP 次數與用量在回覆後顯示。相同資料與需求的 repo 選檔可能命中短期快取。
+
+產生原稿後可按「檢查投影片溢出」，實際以 Chromium 逐頁檢查；它不會自動刪文或拆頁。建立網頁簡報後，可展開「直接預覽網頁簡報」。版面檢查是額外的渲染步驟，與一般網頁建置不同，需安裝 Chromium。
 
 ## 哪些操作會呼叫 LLM
 
@@ -105,3 +111,15 @@ Pop-Location
 - 上游負責完整 Project State Schema 驗證；Report Agent 只檢查本模組需要的資料關係與來源，不代替完整 Schema 驗證。
 
 詳見 [Report Agent](../../report-agent/README.md)、[Slidev 匯出](../../slide-export/README.md) 與 [p-limit 歷史資料](../../test-data/p-limit/README.md)。
+
+## Public GitHub repository input
+
+At `/reports`, enter `https://github.com/owner/repo` in **公開 GitHub repo 網址**, then select **載入公開 repo**. Root URLs with `.git` or a trailing slash are accepted. Loading makes anonymous GitHub GET requests and does not call an LLM. It resolves the default branch once, then pins generation and revision to that exact commit. Reloading explicitly selects the then-current version and clears the workspace after confirmation; a failed import preserves the existing draft.
+
+This creates a **Repo Snapshot**, a separate report-evidence contract, not an Intent Supervisor Project State. It does not assess feature completion, milestones or risks, and does not import historical PR ranges. Those fields remain unassessed. Use it to explain the current implementation; it cannot establish recent progress without a historical comparison. The original Project State and p-limit fixture workflows remain available in the dataset selector. Repo Snapshots are not written to Firebase or the official schema.
+
+Repository reading starts enabled. Generation/revision first ask the configured LLM to select excerpts, then anonymously download only selected blobs from the pinned tree and verify their Git SHA-1. Wording-only revisions can skip reading. The existing report JSON, edit validation, review, Markdown editor and Slidev/PPTX/portable exports are shared with the original flow. Turning reading off limits the model to metadata and the existing report; it cannot inspect the implementation.
+
+Limits: public GitHub only; no private repos, authentication tokens, arbitrary hosts, branch URLs or historic PR ingestion. Anonymous GitHub rate limits apply; the UI reports GitHub errors separately from LLM errors. Complete, non-truncated trees are required; at most 1,500 eligible text files, 256,000 bytes per file, four selected excerpts of up to 180 lines and 24,000 characters total. Common source/documentation formats are allowed; environment files, sensitive-name paths, dependencies/build output, lockfiles, symlinks, submodules, binary files and LFS pointers are excluded. Path names currently use ASCII letters, digits, dots, hyphens and underscores. Downloaded files must be UTF-8. Requests have size/time limits; large repositories may require a future scoped-inventory feature. Endpoints remain local-development-only until authentication and hosting are coordinated.
+
+Run `node report-agent/verify.mjs --browser` from `slide-generator` to include the public-repo import/generation browser regression with mocked GitHub and LLM responses. No real model calls or keys are needed.

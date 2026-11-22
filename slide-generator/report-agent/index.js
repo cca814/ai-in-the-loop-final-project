@@ -1,4 +1,5 @@
-import { prepareState } from './state.js';
+import { reportRequirements, validateRequirements } from './requirements.js';
+import { prepareEvidence as prepareState } from './evidence.js';
 import { buildMessages } from './prompt.js';
 import { GenerationOutputError } from './errors.js';
 import { repositorySources } from './repository-context.js';
@@ -11,6 +12,7 @@ const escapeText = value => value.replace(/([\\`*_[\]<>#])/g, '\\$1');
 export async function generateReport(state, { complete, repositoryContext, focus = '', mergeHistory, maxCorrectionRetries = 1 } = {}) {
   if (typeof complete !== 'function') throw new Error('A complete(messages) LLM function is required');
   const prepared = prepareState(state);
+  const requirements = reportRequirements(focus);
   const extraSources = [...repositorySources(repositoryContext, prepared), ...mergeHistorySources(mergeHistory, prepared)];
   if (![0, 1].includes(maxCorrectionRetries)) throw new Error('Invalid correction retry limit');
   const refs = new Map(prepared.source_refs.map(ref => [ref.id, ref]));
@@ -23,10 +25,13 @@ export async function generateReport(state, { complete, repositoryContext, focus
       let result;
       try { result = JSON.parse(response); }
       catch { throw new GenerationOutputError('Could not obtain valid LLM JSON', 'GENERATION_JSON_INVALID'); }
-      return renderReport(result, refs);
+      const report = renderReport(result, refs);
+      try { validateRequirements(report, requirements); }
+      catch (error) { throw new GenerationOutputError(error.message, 'GENERATION_REQUIREMENT_INVALID', undefined, 'requirements'); }
+      return report;
     } catch (error) {
       if (!(error instanceof GenerationOutputError) || attempt >= maxCorrectionRetries) throw error;
-      messages.push({ role: 'user', content: JSON.stringify({ correction_required: error.code, page: error.page, field: error.field, allowed_source_ids: [...refs.keys()], instruction: 'The report was rejected and nothing was saved. Return a complete corrected JSON object with a nonempty pages array. Each page requires title: nonempty single-line string, bullets: nonempty array of nonempty single-line strings, script: nonempty string (paragraphs allowed), source_ids: optional array of exact allowed source ID strings (omit or use [] when no source section is needed). Do not put URLs in title, bullets or script, and do not put a standalone --- separator in script. Use ONLY the earlier supplied evidence and preserve its uncertainty and the requested audience/structure. Source IDs are identifiers, not URLs, PR numbers, titles, or new invented names. Do not invent facts to repair formatting.' }) });
+      messages.push({ role: 'user', content: JSON.stringify({ correction_required: error.code, page: error.page, field: error.field, requirements, detail: error.code === 'GENERATION_REQUIREMENT_INVALID' ? error.message : undefined, allowed_source_ids: [...refs.keys()], instruction: 'The report was rejected and nothing was saved. Return a complete corrected JSON object with a nonempty pages array. Each page requires title: nonempty single-line string, bullets: nonempty array of nonempty single-line strings, script: nonempty string (paragraphs allowed), source_ids: optional array of exact allowed source ID strings (omit or use [] when no source section is needed). Do not put URLs in title, bullets or script, and do not put a standalone --- separator in script. Use ONLY the earlier supplied evidence and preserve its uncertainty and the requested audience/structure. Source IDs are identifiers, not URLs, PR numbers, titles, or new invented names. Do not invent facts to repair formatting.' }) });
     }
   }
 }

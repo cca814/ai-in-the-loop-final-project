@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { loadMergeHistory } from './merge-history.js';
-import { historicalStateUrls } from './historical-state-urls.js';
-import { reportHandler } from './http.js';
+import { loadMergeHistory } from '../test-data/p-limit/adapters/merge-loader.js';
+import { historicalStateUrls } from '../test-data/p-limit/adapters/historical-state-urls.js';
+import { fixtureReportHandler as reportHandler } from '../test-data/p-limit/adapters/report-handler.js';
 import { RepositorySelectionError } from './errors.js';
 
 const inventory = JSON.parse(await readFile(new URL('../test-data/p-limit/inventory.json', import.meta.url)));

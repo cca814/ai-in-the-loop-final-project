@@ -82,3 +82,12 @@ The original CLI without `--ai` remains deterministic. Output files are created 
 
 
 Optional end-to-end check (existing Next development server on port 3000): set `PLAYWRIGHT_BROWSERS_PATH` if using a custom Chromium location, then run `node auto-effects-browser-check.mjs` from this directory. It mocks every LLM response, checks the default UI and exact report preservation, builds a real web deck, verifies click reveals and transitions in Chromium, exports both PPTX forms (two final-state pages with notes), checks the portable ZIP source, and verifies stale link invalidation and failed-regeneration preservation. It does not load API keys or call a provider.
+
+
+## Layout review and resource controls
+
+After generating a current slide draft, use the workspace's layout-check button (`POST /api/reports/layout`). It builds an isolated temporary SPA, opens each visible slide in Chromium with click content revealed, and compares content bounds against the fixed slide canvas. It returns page numbers with possible horizontal/vertical overflow. Temporary files, server and browser are cleaned up. This is advisory: no confirmed text is automatically changed, and DOM bounds cannot guarantee typography, image availability or PPTX fidelity. Unlike a basic web build, this optional check requires Chromium. The ready web deck can also be previewed in an iframe inside the workspace.
+
+Within one Node process, at most two web/portable/PPTX/layout render jobs run concurrently. Excess requests return `RENDER_BUSY` and Retry-After; this is a local renderer limit, not a model-provider failure. A 150-second operation deadline and cancellation signal are forwarded to CLI subprocesses. There is no distributed queue or resume-from-stage implementation. Automatic effect planning uses at most two model calls and reports usage when available.
+
+See the [optimization record](../app/reports/OPTIMIZATIONS.md) for verification and remaining limitations.

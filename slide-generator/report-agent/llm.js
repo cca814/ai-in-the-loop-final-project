@@ -1,6 +1,7 @@
+import { OperationError } from './operation.js';
 import { ConfigurationError, ModelOutputError, ProviderError } from './errors.js';
 
-export function createClient({ provider = process.env.LLM_PROVIDER || 'openai', apiKey, model, fetchImpl = fetch, maxRetries = 2, timeoutMs = 45_000, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
+export function createClient({ provider = process.env.LLM_PROVIDER || 'openai', apiKey, model, fetchImpl = fetch, signal, onUsage = () => {}, maxRetries = 2, timeoutMs = 45_000, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
   const providers = {
     openai: { url: 'https://api.openai.com/v1/chat/completions', key: 'OPENAI_API_KEY', model: 'OPENAI_MODEL' },
     groq: { url: 'https://api.groq.com/openai/v1/chat/completions', key: 'GROQ_API_KEY', model: 'GROQ_MODEL' },
@@ -11,14 +12,18 @@ export function createClient({ provider = process.env.LLM_PROVIDER || 'openai', 
   apiKey ??= process.env[config.key];
   model ??= process.env[config.model];
   if (!apiKey || !model) throw new ConfigurationError(`Set ${config.key} and ${config.model}`);
+  onUsage({ provider, model });
   if (!Number.isInteger(maxRetries) || maxRetries < 0 || maxRetries > 4 || !Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new ConfigurationError('Invalid retry or timeout settings');
 
   async function post(url, options) {
     for (let attempt = 0; ; attempt++) {
+      if (signal?.aborted) throw new OperationError('OPERATION_CANCELLED');
+      onUsage({ httpAttempts: 1 });
       let response;
       try {
-        response = await fetchImpl(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+        response = await fetchImpl(url, { ...options, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs) });
       } catch (error) {
+        if (signal?.aborted) throw new OperationError('OPERATION_CANCELLED');
         // A timeout/network failure may have reached the provider. Do not
         // automatically duplicate it; retry only explicit transient HTTP errors.
         throw new ProviderError(null, attempt + 1, ['TimeoutError', 'AbortError'].includes(error.name) ? 'timeout' : 'network');
@@ -37,7 +42,11 @@ export function createClient({ provider = process.env.LLM_PROVIDER || 'openai', 
       const retryAfter = header ? (/^\d+(\.\d+)?$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now()) : NaN;
       if (Number.isFinite(retryAfter) && retryAfter > 10_000) throw new ProviderError(response.status, attempt + 1);
       const delay = Number.isFinite(retryAfter) && retryAfter >= 0 ? retryAfter : 1000 * 2 ** attempt;
-      await sleep(delay);
+      if (signal) {
+        let listener;
+        try { await Promise.race([sleep(delay), new Promise((_, reject) => { listener = () => reject(new OperationError('OPERATION_CANCELLED')); signal.addEventListener('abort', listener, { once: true }); if (signal.aborted) listener(); })]); }
+        finally { if (listener) signal.removeEventListener('abort', listener); }
+      } else await sleep(delay);
     }
   }
   if (provider === 'gemini') {
@@ -51,6 +60,7 @@ export function createClient({ provider = process.env.LLM_PROVIDER || 'openai', 
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...(system.length ? { systemInstruction: { parts: system } } : {}), contents, generationConfig: { responseMimeType: 'application/json' } })
       });
+      onUsage({ inputTokens: result.usageMetadata?.promptTokenCount, outputTokens: result.usageMetadata?.candidatesTokenCount });
       const candidate = result.candidates?.[0];
       if (candidate?.finishReason !== 'STOP') throw new ModelOutputError('Gemini did not complete its response', 'PROVIDER_RESPONSE_INCOMPLETE');
       const content = candidate.content?.parts?.filter(part => !part.thought && typeof part.text === 'string').map(part => part.text).join('');
@@ -64,7 +74,10 @@ export function createClient({ provider = process.env.LLM_PROVIDER || 'openai', 
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, messages, response_format: { type: 'json_object' } })
     });
-    const content = result.choices?.[0]?.message?.content;
+    const choice = result.choices?.[0];
+    if (choice?.finish_reason && choice.finish_reason !== 'stop') throw new ModelOutputError('Provider did not complete its response', 'PROVIDER_RESPONSE_INCOMPLETE');
+    onUsage({ inputTokens: result.usage?.prompt_tokens, outputTokens: result.usage?.completion_tokens });
+    const content = choice?.message?.content;
     if (typeof content !== 'string' || !content.trim()) throw new ModelOutputError('LLM returned no content', 'PROVIDER_RESPONSE_EMPTY');
     return content;
   };

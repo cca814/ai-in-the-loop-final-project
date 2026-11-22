@@ -93,6 +93,18 @@ try {
   assert.equal(modelCalls, 1);
   console.log('Portable ZIP passed: same Slidev source, effects and offline build; exports made no additional model calls.');
 
+  const checked = await page.request.post(`${base}/api/reports/layout`, { data: { report, transition: 'auto', presentationPlan: plan }, timeout: 150000 });
+  assert.equal(checked.status(), 200);
+  assert.deepEqual((await checked.json()).overflowPages, []);
+  const dense = '# Normal\n\n- Short.\n\n## Speaker Notes\n\nNote.\n\n---\n\n# Too long\n\n' + Array.from({ length: 45 }, (_, index) => '- Long point ' + index).join('\n') + '\n\n## Speaker Notes\n\nAnother note.';
+  const overflowing = await page.request.post(`${base}/api/reports/layout`, { data: { report: dense, transition: 'fade' }, timeout: 150000 });
+  assert.equal(overflowing.status(), 200);
+  const diagnostics = await overflowing.json();
+  assert.equal(diagnostics.checkedPages, 2);
+  assert.deepEqual(diagnostics.overflowPages.map(page => page.page), [2]);
+  assert.equal(diagnostics.overflowPages[0].overflowY, true);
+  console.log('Actual layout checks passed: short animated slides fit; intentionally dense page 2 overflows; no model calls.');
+
   await page.getByRole('button', { name: '產生 Slidev 原稿', exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll('button')].find(button => button.textContent === '產生 Slidev 原稿')?.disabled === false);
   assert.equal(modelCalls, 2);

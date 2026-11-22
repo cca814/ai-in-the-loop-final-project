@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { reportHandler } from './http.js';
+import { fixtureReportHandler as reportHandler } from '../test-data/p-limit/adapters/report-handler.js';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('../slide-export/node_modules/playwright-chromium');
@@ -28,6 +28,7 @@ try {
   }
   if (!ready) throw new Error('Next.js preview did not start');
   await page.getByRole('heading', { name: '專案進度報告' }).waitFor();
+  await page.getByRole('checkbox', { name: '\u4fee\u6539\u524d\u5148\u78ba\u8a8d\u5dee\u7570', exact: true }).uncheck();
   const layout = await page.locator('main').evaluate(element => ({
     className: element.className,
     padding: getComputedStyle(element).paddingTop,
@@ -77,9 +78,41 @@ try {
   assert.match(await preview.locator('pre code').innerText(), /const example = 1/);
   assert.equal(await preview.locator('script').count(), 0);
   assert.equal(await preview.locator('a[href^="javascript:"]').count(), 0);
+  const longReport = Array.from({ length: 60 }, (_, index) => `# Section ${index + 1}\n\n- Confirmed progress item ${index + 1}\n- Another point with enough text to wrap in the preview.\n\n## Speaker Notes\n\nExplain this existing result without changing its meaning.\n\n---`).join('\n\n');
+  await editor.fill(longReport);
+  await preview.getByRole('heading', { name: 'Section 60', exact: true }).waitFor();
+  const paneSizes = await page.evaluate(() => ['#report-markdown', '.reports-markdownPreview'].map(selector => {
+    const element = document.querySelector(selector);
+    return { height: element.getBoundingClientRect().height, scrollHeight: element.scrollHeight, clientHeight: element.clientHeight };
+  }));
+  assert.ok(paneSizes.every(size => size.height <= 560 && size.scrollHeight > size.clientHeight));
+  assert.equal(paneSizes[0].height, paneSizes[1].height);
+  async function checkScroll(sourceSelector, targetSelector, ratio) {
+    await page.locator(sourceSelector).evaluate((element, fraction) => { element.scrollTop = fraction * (element.scrollHeight - element.clientHeight); }, ratio);
+    await page.waitForFunction(({ selector, fraction }) => {
+      const element = document.querySelector(selector);
+      return Math.abs(element.scrollTop / (element.scrollHeight - element.clientHeight) - fraction) < .01;
+    }, { selector: targetSelector, fraction: ratio });
+  }
+  await checkScroll('#report-markdown', '.reports-markdownPreview', .65);
+  await checkScroll('.reports-markdownPreview', '#report-markdown', .2);
+  await checkScroll('#report-markdown', '.reports-markdownPreview', 1);
+  await checkScroll('.reports-markdownPreview', '#report-markdown', 0);
+  await checkScroll('#report-markdown', '.reports-markdownPreview', .4);
+  await page.getByRole('button', { name: '檢視', exact: true }).click();
+  assert.ok(await preview.evaluate(element => element.getBoundingClientRect().height <= 560 && element.scrollHeight > element.clientHeight));
+  await page.getByRole('button', { name: '雙欄', exact: true }).click();
+  await page.waitForFunction(() => {
+    const element = document.querySelector('#report-markdown');
+    return Math.abs(element.scrollTop / (element.scrollHeight - element.clientHeight) - .4) < .01;
+  });
+  assert.equal(await editor.inputValue(), longReport);
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   assert.equal(await page.locator('.reports-markdownWorkspace').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length), 1);
+  assert.ok(await preview.evaluate(element => element.getBoundingClientRect().height <= 420));
+  await checkScroll('.reports-markdownPreview', '#report-markdown', .75);
+  await checkScroll('#report-markdown', '.reports-markdownPreview', .25);
   await page.setViewportSize({ width: 1440, height: 1000 });
   assert.equal(await page.locator('.reports-markdownWorkspace').evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2);
   await editor.fill(edited);
@@ -87,6 +120,7 @@ try {
   assert.equal(await editor.inputValue(), edited);
   assert.equal(await preview.count(), 0);
   console.log('Markdown editor modes passed: live preview, source preservation, GFM tables/tasks/code, safe rendering and responsive split layout.');
+  console.log('Long-report preview passed: bounded equal pane heights, bidirectional proportional scrolling, endpoints, mode-switch position and mobile scrolling; Markdown unchanged.');
   await page.getByLabel('修改要求', { exact: true }).fill('Another revision');
   await page.getByRole('button', { name: '套用修改', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: '模擬供應商暫時不可用' }).waitFor();

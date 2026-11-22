@@ -1,15 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import RevisionReview from './revision-review';
+import { inspectReport } from '../../report-agent/quality.js';
 import MarkdownEditor from './markdown-editor';
-import { stateDatasets } from './state-datasets';
+import type { WorkspaceDataset } from './workspace-types';
 import './workspace.css';
 
+type Quality = { pageCount: number; estimatedSpeakingSeconds: number; warnings: { code: string; page: number; message: string }[]; provenance: unknown };
+type OperationStats = { modelCalls: number; durationMs: number; inputTokens: number; outputTokens: number; httpAttempts: number };
+type SavedVersion = { report: string; history: Turn[]; quality: Quality | null; label: string };
+type Proposal = { report: string; message: string; quality: Quality | null; request: string; base: string };
+type LayoutResult = { markdown: string; checkedPages: number; overflowPages: { page: number; overflowX: boolean; overflowY: boolean }[] };
 type Turn = { role: 'user' | 'assistant'; content: string };
 type PresentationPlan = { pages: { transition: string; layout: string; reveal: boolean; clickAnimation: string }[] };
 type SlideBundle = { markdown: string; report: string; transition: string; presentationPlan?: PresentationPlan };
 type WebDeck = { url: string; expiresAt: string; report: string; transition: string };
-type RepositoryTrace = { commit: string; status: 'read' | 'not_needed'; files: { path: string; start_line: number; end_line: number; url: string }[] };
+type RepositoryTrace = { commit: string; cached?: boolean; status: 'read' | 'not_needed'; files: { path: string; start_line: number; end_line: number; url: string }[] };
 
 function saveBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -20,19 +27,47 @@ function saveBlob(blob: Blob, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export default function ReportWorkspace() {
-  const [datasetId, setDatasetId] = useState('demo');
-  const [snapshotId, setSnapshotId] = useState('normal');
+export default function ReportWorkspace({ datasets }: { datasets: WorkspaceDataset[] }) {
+  const [remoteDataset, setRemoteDataset] = useState<WorkspaceDataset | null>(null);
+  const [repoUrl, setRepoUrl] = useState('');
+  const [loadingRepo, setLoadingRepo] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
+  const available = [...(remoteDataset ? [remoteDataset] : []), ...datasets].filter(dataset => dataset.snapshots.length > 0);
+  async function importRepository(event: React.FormEvent) {
+    event.preventDefault();
+    if (loadingRepo || workspaceBusy) return;
+    if (hasDraft && !window.confirm('載入 repo 會清除目前草稿與對話，請先下載需要保留的內容。確定繼續？')) return;
+    setLoadingRepo(true); setImportError('');
+    try {
+      const response = await fetch('/api/reports/repository', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(50_000), body: JSON.stringify({ url: repoUrl.trim() }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '無法載入 repo。');
+      if (result.state?.evidence_kind !== 'repository_snapshot' || !result.state.source_commit_sha) throw new Error('Repo 回應不完整。');
+      const state = result.state;
+      setRemoteDataset({ id: `public-${state.repository.full_name}-${state.source_commit_sha}-${Date.now()}`, label: `公開 repo · ${state.repository.full_name}`, supportsRepository: true, snapshots: [{ id: state.event_id, label: `目前版本 · ${state.source_commit_sha.slice(0, 12)}`, state }] });
+      setHasDraft(false);
+    } catch (cause) { setImportError(cause instanceof Error ? cause.message : '無法載入 repo。'); }
+    finally { setLoadingRepo(false); }
+  }
+  return <><section className="reports-importBox"><form className="reports-card" onSubmit={importRepository}><label className="reports-label" htmlFor="public-repository-url">公開 GitHub repo 網址</label><input id="public-repository-url" type="url" required maxLength={300} value={repoUrl} onChange={event => setRepoUrl(event.target.value)} disabled={loadingRepo || workspaceBusy} placeholder="https://github.com/owner/repo" /><button className="reports-primary" disabled={loadingRepo || workspaceBusy}>{loadingRepo ? '正在載入 repo…' : '載入公開 repo'}</button><p className="reports-caption">固定預設分支目前 commit，按需讀取程式碼現況；沒有正式進度評估或歷史 PR 區間。載入不呼叫 LLM。重新載入會取得當時最新版本。</p>{importError && <p role="alert">{importError}</p>}</form></section>{available.length > 0 && <ReportWorkspaceContent key={remoteDataset?.id || 'fixtures'} datasets={available} onBusyChange={setWorkspaceBusy} onDraftChange={setHasDraft} externalBusy={loadingRepo} />}</>;
+}
+
+function ReportWorkspaceContent({ datasets, onBusyChange, onDraftChange, externalBusy }: { datasets: WorkspaceDataset[]; onBusyChange: (busy: boolean) => void; onDraftChange: (draft: boolean) => void; externalBusy: boolean }) {
+  const [datasetId, setDatasetId] = useState(datasets[0].id);
+  const [snapshotId, setSnapshotId] = useState(datasets[0].snapshots[0].id);
   const [report, setReport] = useState('');
   const [splitEditor, setSplitEditor] = useState(false);
   const [history, setHistory] = useState<Turn[]>([]);
   const [request, setRequest] = useState('');
   const [focus, setFocus] = useState('');
-  const [useRepository, setUseRepository] = useState(false);
+  const [useRepository, setUseRepository] = useState(datasets[0].snapshots[0].state.evidence_kind === 'repository_snapshot');
   const [mergeRangeEnabled, setMergeRangeEnabled] = useState(false);
   const [rangeStartIndex, setRangeStartIndex] = useState(0);
   const [repositoryTrace, setRepositoryTrace] = useState<RepositoryTrace | null>(null);
-  const [pending, setPending] = useState<'generate' | 'revise' | 'slides' | 'export' | 'web' | 'portable' | null>(null);
+  const [pending, setPending] = useState<'generate' | 'revise' | 'slides' | 'export' | 'web' | 'portable' | 'layout' | null>(null);
+  const [layoutResult, setLayoutResult] = useState<LayoutResult | null>(null);
   const [presentationKind, setPresentationKind] = useState('web');
   const [webDeck, setWebDeck] = useState<WebDeck | null>(null);
   const [transition, setTransition] = useState('auto');
@@ -40,22 +75,102 @@ export default function ReportWorkspace() {
   const [confirmedReport, setConfirmedReport] = useState('');
   const [slideBundle, setSlideBundle] = useState<SlideBundle | null>(null);
   const [error, setError] = useState('');
+  const [quality, setQuality] = useState<Quality | null>(null);
+  const [operationStats, setOperationStats] = useState<OperationStats | null>(null);
+  const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [reviewChanges, setReviewChanges] = useState(true);
+  const [undoStack, setUndoStack] = useState<SavedVersion[]>([]);
+  const [redoStack, setRedoStack] = useState<SavedVersion[]>([]);
+  const [elapsed, setElapsed] = useState(0);
+  const activeOperation = useRef<AbortController | null>(null);
+  const manualCheckpoint = useRef(false);
   const [notice, setNotice] = useState('選擇資料後，生成第一份報告。');
-  const dataset = stateDatasets.find(item => item.id === datasetId)!;
+  const dataset = datasets.find(item => item.id === datasetId)!;
   const snapshotIndex = dataset.snapshots.findIndex(item => item.id === snapshotId);
   const state = dataset.snapshots[snapshotIndex].state;
-  const historical = datasetId === 'p-limit';
+  const repoOnly = state.evidence_kind === 'repository_snapshot';
+  const historical = !!dataset.supportsHistory;
   const effectiveRangeStart = Math.min(rangeStartIndex, snapshotIndex);
   const mergeRange = historical && mergeRangeEnabled ? { startCommit: dataset.snapshots[effectiveRangeStart].state.source_commit_sha, endCommit: state.source_commit_sha } : undefined;
   const triggerSource = state.source_refs.find(ref => ref.id === state.trigger.source_ref_id);
   const slidesCurrent = !!slideBundle && slideBundle.report === report && slideBundle.transition === transition;
   const webCurrent = !!webDeck && webDeck.report === report && webDeck.transition === transition;
 
+  useEffect(() => { onBusyChange(!!pending); }, [pending, onBusyChange]);
+  useEffect(() => { onDraftChange(!!report.trim()); }, [report, onDraftChange]);
+
+
+  useEffect(() => {
+    if (!report.trim()) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [report]);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setInterval(() => setElapsed(previous => previous + 1), 1000);
+    return () => clearInterval(timer);
+  }, [pending]);
+  useEffect(() => () => activeOperation.current?.abort(), []);
+
+  function remember(label: string) {
+    if (report) setUndoStack(previous => [...previous.slice(-19), { report, history, quality, label }]);
+    setRedoStack([]);
+    manualCheckpoint.current = false;
+  }
+  function manualEdit(next: string) {
+    if (!manualCheckpoint.current) { remember('Manual edit'); manualCheckpoint.current = true; }
+    setReport(next); setQuality(null); setProposal(null);
+  }
+  function restoreVersion(direction: 'undo' | 'redo') {
+    const stack = direction === 'undo' ? undoStack : redoStack;
+    const version = stack.at(-1);
+    if (!version || pending) return;
+    const current = { report, history, quality, label: direction === 'undo' ? 'Redo' : 'Undo' };
+    if (direction === 'undo') { setUndoStack(stack.slice(0, -1)); setRedoStack(previous => [...previous.slice(-19), current]); }
+    else { setRedoStack(stack.slice(0, -1)); setUndoStack(previous => [...previous.slice(-19), current]); }
+    setReport(version.report); setHistory(version.history); setQuality(version.quality); setProposal(null); setConfirmedReport(''); setNotice('已還原報告與對話版本。'); manualCheckpoint.current = false;
+  }
+  function beginOperation(kind: NonNullable<typeof pending>) {
+    const controller = new AbortController(); activeOperation.current = controller;
+    setPending(kind); setElapsed(0); setOperationStats(null); setNotice('');
+    return controller;
+  }
+  function operationError(cause: unknown, fallback: string) {
+    if (cause instanceof Error && cause.name === 'AbortError') return '操作已取消，目前草稿已保留。';
+    if (cause instanceof Error && cause.name === 'TimeoutError') return '操作超過時間上限，目前草稿已保留。';
+    return cause instanceof Error ? cause.message : fallback;
+  }
+  function finishOperation(controller: AbortController) {
+    if (activeOperation.current === controller) { activeOperation.current = null; setPending(null); }
+  }
+  function acceptProposal() {
+    if (!proposal || proposal.base !== report) { setProposal(null); return; }
+    remember('Before revision');
+    setReport(proposal.report); setQuality(proposal.quality);
+    setHistory(previous => [...previous, { role: 'user', content: proposal.request }, { role: 'assistant', content: proposal.message }]);
+    setRequest(''); setProposal(null); setNotice('修改已確認並套用，可用復原返回上一版。');
+  }
+
+  async function inspectSlideLayout() {
+    if (pending || !slidesCurrent || !slideBundle) return;
+    const controller = beginOperation('layout'); setError('');
+    try {
+      const response = await fetch('/api/reports/layout', { method: 'POST', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]), headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: slideBundle.report, transition: slideBundle.transition, presentationPlan: slideBundle.presentationPlan }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '無法檢查投影片版面。');
+      if (!Number.isInteger(result.checkedPages) || !Array.isArray(result.overflowPages)) throw new Error('版面檢查回覆格式不符。');
+      setLayoutResult({ ...result, markdown: slideBundle.markdown });
+      setNotice('版面檢查完成，請查看結果；報告內容未變更。');
+    } catch (cause) { setError(operationError(cause, '無法檢查投影片版面。')); }
+    finally { finishOperation(controller); }
+  }
+
   function changeSnapshot(nextDataset: string, value: string) {
     if (nextDataset === datasetId && value === snapshotId) return;
     if (report && !window.confirm('切換資料會清除目前報告與對話。請先下載需要保留的內容。是否繼續？')) return;
     setDatasetId(nextDataset);
-    if (nextDataset !== datasetId) { setUseRepository(false); setFocus(''); setMergeRangeEnabled(false); setRangeStartIndex(0); }
+    if (nextDataset !== datasetId) { setUseRepository(datasets.find(item => item.id === nextDataset)?.snapshots[0].state.evidence_kind === 'repository_snapshot'); setFocus(''); setMergeRangeEnabled(false); setRangeStartIndex(0); }
     else setRangeStartIndex(previous => Math.min(previous, dataset.snapshots.findIndex(item => item.id === value)));
     setSnapshotId(value);
     setReport('');
@@ -65,29 +180,37 @@ export default function ReportWorkspace() {
     setSlideBundle(null);
     setWebDeck(null);
     setConfirmedReport('');
-    setRepositoryTrace(null);
+    setRepositoryTrace(null); setQuality(null); setProposal(null); setUndoStack([]); setRedoStack([]); manualCheckpoint.current = false;
     setNotice('已切換資料，可以生成新報告。');
   }
 
   async function run(mode: 'generate' | 'revise') {
-    if (pending) return;
+    if (pending || (mode === 'revise' && proposal)) return;
     if (mode === 'generate' && report && !window.confirm('重新生成會取代目前報告並清除對話，是否繼續？')) return;
-    setPending(mode);
+    const controller = beginOperation(mode);
     setError('');
     setNotice('');
     try {
       const response = await fetch(`/api/reports/${mode}`, {
-        method: 'POST',
+        method: 'POST', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]),
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mode === 'generate' ? { state, focus, mergeRange, useRepository: historical && useRepository } : { state, report, request, history, mergeRange, useRepository: historical && useRepository }),
+        body: JSON.stringify(mode === 'generate' ? { state, focus, mergeRange, useRepository: !!dataset.supportsRepository && useRepository } : { state, report, request, history, mergeRange, useRepository: !!dataset.supportsRepository && useRepository }),
       });
       const result = await response.json();
+      setOperationStats(result.operation || null);
       if (!response.ok) {
         const stages: Record<string, string> = { repository_selection: 'Repo 選檔階段：', report_generation: '報告生成階段：', report_revision: '報告修改階段：' };
         throw new Error(`${stages[result.stage] || ''}${result.error || '請求失敗，請稍後重試。'}${result.code ? ` [${result.code}]` : ''}`);
       }
       if (typeof result.report !== 'string' || !result.report.trim()) throw new Error('伺服器回傳的報告為空或格式不正確。');
-      setReport(result.report);
+      setOperationStats(result.operation || null);
+      if (mode === 'revise' && reviewChanges && result.report !== report) {
+        setProposal({ report: result.report, base: report, request, message: result.message || '請確認這次修改。', quality: result.quality || null });
+        setNotice('修改建議已產生，請確認差異後再接受；原稿尚未變更。');
+        return;
+      }
+      remember(mode === 'generate' ? 'Before generation' : 'Before revision');
+      setReport(result.report); setQuality(result.quality || null); setProposal(null);
       setRepositoryTrace(result.repository || null);
       if (mode === 'generate') {
         setHistory([]);
@@ -99,10 +222,10 @@ export default function ReportWorkspace() {
         setNotice(changed ? '修改已套用至目前報告。' : '本次未修改報告，請查看對話回覆。');
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '請求失敗，請稍後重試。');
+      setError(operationError(cause, '請求失敗，請稍後重試。'));
       setNotice(report.trim() ? '本次請求未完成，目前報告與對話已保留。' : '本次尚未產生報告，請稍後重試。');
     } finally {
-      setPending(null);
+      finishOperation(controller);
     }
   }
 
@@ -113,28 +236,29 @@ export default function ReportWorkspace() {
 
   async function generateSlides() {
     if (pending || !report.trim() || confirmedReport !== report) return;
-    setPending('slides');
+    const controller = beginOperation('slides');
     setError('');
     try {
-      const response = await fetch('/api/reports/slides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report, transition }) });
+      const response = await fetch('/api/reports/slides', { method: 'POST', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]), headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report, transition }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || '無法產生 Slidev 原稿。');
       if (typeof result.slides !== 'string') throw new Error('簡報原稿格式不正確。');
       if (transition === 'auto' && (!result.presentationPlan || !Array.isArray(result.presentationPlan.pages))) throw new Error('模型未回傳有效的簡報特效設定。');
+      setOperationStats(result.operation || null);
       setSlideBundle({ markdown: result.slides, report, transition, presentationPlan: result.presentationPlan });
       setWebDeck(null);
       setNotice('Slidev 原稿已產生，可以建立網頁簡報或下載。');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '無法產生簡報。');
-    } finally { setPending(null); }
+      setError(operationError(cause, '無法產生簡報。'));
+    } finally { finishOperation(controller); }
   }
 
   async function downloadPptx() {
     if (pending || !slidesCurrent || !slideBundle) return;
-    setPending('export');
+    const controller = beginOperation('export');
     setError('');
     try {
-      const response = await fetch('/api/reports/export', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: slideBundle.report, transition: slideBundle.transition, presentationPlan: slideBundle.presentationPlan, format }) });
+      const response = await fetch('/api/reports/export', { method: 'POST', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]), headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: slideBundle.report, transition: slideBundle.transition, presentationPlan: slideBundle.presentationPlan, format }) });
       if (!response.ok) {
         const result = await response.json();
         throw new Error(result.error || 'PPTX 匯出失敗。');
@@ -142,32 +266,32 @@ export default function ReportWorkspace() {
       saveBlob(await response.blob(), `${state.project_id}-${state.event_id}-${format}.pptx`);
       setNotice('PPTX 已下載。');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'PPTX 匯出失敗。');
-    } finally { setPending(null); }
+      setError(operationError(cause, 'PPTX 匯出失敗。'));
+    } finally { finishOperation(controller); }
   }
 
   async function createWebDeck() {
     if (pending || !slidesCurrent || !slideBundle) return;
-    setPending('web');
+    const controller = beginOperation('web');
     setError('');
     try {
-      const response = await fetch('/api/reports/web', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: slideBundle.report, transition: slideBundle.transition, presentationPlan: slideBundle.presentationPlan }) });
+      const response = await fetch('/api/reports/web', { method: 'POST', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]), headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: slideBundle.report, transition: slideBundle.transition, presentationPlan: slideBundle.presentationPlan }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || '無法建立網頁簡報。');
       if (typeof result.url !== 'string' || !result.url.startsWith('/api/reports/present/') || typeof result.expiresAt !== 'string') throw new Error('網頁簡報連結格式不正確。');
       setWebDeck({ url: result.url, expiresAt: result.expiresAt, report: slideBundle.report, transition: slideBundle.transition });
       setNotice('網頁簡報已就緒，請按「開啟播放」在新分頁播放。');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '無法建立網頁簡報。');
-    } finally { setPending(null); }
+      setError(operationError(cause, '無法建立網頁簡報。'));
+    } finally { finishOperation(controller); }
   }
 
   async function downloadPortable() {
     if (pending || !slidesCurrent || !slideBundle) return;
-    setPending('portable');
+    const controller = beginOperation('portable');
     setError('');
     try {
-      const response = await fetch('/api/reports/portable', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: slideBundle.report, transition: slideBundle.transition, presentationPlan: slideBundle.presentationPlan }) });
+      const response = await fetch('/api/reports/portable', { method: 'POST', signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180_000)]), headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ report: slideBundle.report, transition: slideBundle.transition, presentationPlan: slideBundle.presentationPlan }) });
       if (!response.ok) {
         const result = await response.json();
         throw new Error(result.error || '可攜式簡報匯出失敗。');
@@ -175,25 +299,25 @@ export default function ReportWorkspace() {
       saveBlob(await response.blob(), `${state.project_id}-${state.event_id}-portable.zip`);
       setNotice('可攜式簡報已下載。請解壓縮後執行 start.cmd，並開啟顯示的網址。');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '可攜式簡報匯出失敗。');
-    } finally { setPending(null); }
+      setError(operationError(cause, '可攜式簡報匯出失敗。'));
+    } finally { finishOperation(controller); }
   }
 
   return (
-    <main className="reports-workspace">
+    <main className="reports-workspace" inert={externalBusy}>
       <header className="reports-header">
         <div><p className="reports-brand">BRIDGING CODE AND INTENT</p><h1>專案進度報告</h1><p className="reports-subtitle">從專案現況整理報告，讓每一次修改都有依據。</p></div>
-        <span className="reports-badge">本機測試 · {historical ? 'p-limit 歷史回放' : '範例資料'}</span>
+        <span className="reports-badge">本機測試 · {historical || repoOnly ? dataset.label : '範例資料'}</span>
       </header>
       <div className="reports-banner">目前草稿與對話只保留在此頁面，重新整理後會清除。請下載需要保留的報告。</div>
       <div className={`reports-grid${splitEditor ? ' reports-gridSplit' : ''}`}>
         <section className="reports-card" aria-labelledby="state-title">
-          <p className="reports-eyebrow">PROJECT STATE</p><h2 id="state-title">報告的資料來源</h2>
+          <p className="reports-eyebrow">{repoOnly ? 'REPOSITORY SNAPSHOT' : 'PROJECT STATE'}</p><h2 id="state-title">報告的資料來源</h2>
           <label className="reports-label" htmlFor="state-dataset">選擇專案資料</label>
           <select id="state-dataset" value={datasetId} disabled={!!pending} onChange={event => {
-            const next = stateDatasets.find(item => item.id === event.target.value)!;
+            const next = datasets.find(item => item.id === event.target.value)!;
             changeSnapshot(next.id, next.snapshots[0].id);
-          }}>{stateDatasets.map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select>
+          }}>{datasets.map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select>
           <label className="reports-label reports-snapshotLabel" htmlFor="state-example">{historical ? '選擇合併快照' : '選擇範例快照'}</label>
           <select id="state-example" value={snapshotId} disabled={!!pending} onChange={event => changeSnapshot(datasetId, event.target.value)}>
             {dataset.snapshots.map(item => <option value={item.id} key={item.id}>{item.label}</option>)}
@@ -206,27 +330,37 @@ export default function ReportWorkspace() {
           </>}
           <div className="reports-summary"><strong>{state.project_name}</strong><span>{state.repository.full_name}</span><span>資料截至 {state.updated_at}</span><span>快照 {state.event_id}</span></div>
           {historical && <div className="reports-snapshotEvidence"><a href={`https://github.com/${state.repository.full_name}/commit/${state.source_commit_sha}`} target="_blank" rel="noopener noreferrer">Commit {state.source_commit_sha.slice(0, 12)}</a><span>上一版：{state.base_state_id || '無（回放起點）'}</span><button className="reports-secondary" disabled={!!pending} onClick={() => saveBlob(new Blob([JSON.stringify(state, null, 2) + '\n'], { type: 'application/json;charset=utf-8' }), `${state.event_id}.json`)}>下載 Project State</button></div>}
-          <div className="reports-metrics"><div><strong>{state.features.length}</strong><span>功能</span></div><div><strong>{state.risks.length}</strong><span>風險項目</span></div><div><strong>{state.data_gaps.length}</strong><span>資料缺口</span></div></div>
-          <p className="reports-label">最近一次合併</p><p className="reports-detail">{state.trigger.summary}</p>
+          {repoOnly ? <p className="reports-detail">Repo Snapshot（不是正式 Project State）。功能進度、里程碑與風險尚未評估。<a href={`${state.repository.url}/commit/${state.source_commit_sha}`} target="_blank" rel="noopener noreferrer">查看固定 commit {state.source_commit_sha.slice(0, 12)}</a></p> : <div className="reports-metrics"><div><strong>{state.features.length}</strong><span>功能</span></div><div><strong>{state.risks.length}</strong><span>風險項目</span></div><div><strong>{state.data_gaps.length}</strong><span>資料缺口</span></div></div>}
+          <p className="reports-label">{repoOnly ? '程式碼現況資料' : '最近一次合併'}</p><p className="reports-detail">{state.trigger.summary}</p>
           {historical && triggerSource && <p className="reports-caption"><a href={triggerSource.url} target="_blank" rel="noopener noreferrer">查看此次 PR：{triggerSource.title}</a></p>}
-          <details className="reports-details"><summary>查看完整 Project State</summary><pre>{JSON.stringify(state, null, 2)}</pre></details>
+          <details className="reports-details"><summary>{repoOnly ? '查看 Repo Snapshot' : '查看完整 Project State'}</summary><pre>{JSON.stringify(state, null, 2)}</pre></details>
           <label className="reports-label" htmlFor="report-focus">報告生成需求（選填）</label>
           <textarea id="report-focus" rows={3} maxLength={4000} disabled={!!pending} value={focus} onChange={event => setFocus(event.target.value)} placeholder="例如：向主管簡報近期成果與尚待處理的問題，分成兩節，避免程式碼細節。" />
-          <p className="reports-caption">可指定對象、章節、語言與篇幅；留空則以工程師向主管匯報近期進度的方式撰寫。</p>
-          <label className="reports-confirm"><input type="checkbox" checked={historical && useRepository} disabled={!historical || !!pending} onChange={event => setUseRepository(event.target.checked)} />允許按需讀取此版本 repo</label>
-          <p className="reports-caption">{historical ? '每次生成或修改會增加一次選檔模型請求，再按需求讀取本次 commit 的歷史內容。只改語氣或翻譯時可不讀檔，但仍會執行選檔判斷。' : 'Repo 讀取目前僅支援 p-limit 歷史快照。'}</p>
+          <p className="reports-caption">{repoOnly ? '可指定對象、章節、語言與篇幅；此模式只說明目前程式碼支持的能力，缺少歷史比較時無法確認近期進度。' : '可指定對象、章節、語言與篇幅；留空則以工程師向主管匯報近期進度的方式撰寫。'}</p>
+          <label className="reports-confirm"><input type="checkbox" checked={!!dataset.supportsRepository && useRepository} disabled={!dataset.supportsRepository || !!pending} onChange={event => setUseRepository(event.target.checked)} />允許按需讀取此版本 repo</label>
+          <p className="reports-caption">{dataset.supportsRepository ? '未命中快取時，生成或修改會先呼叫模型選檔，再讀取此 commit 的內容。相同資料、需求與草稿可短期沿用已驗證的選檔結果。' : '此資料集尚未提供 repo 讀取。'}</p>
           <button className="reports-primary" disabled={!!pending} onClick={() => run('generate')}>{pending === 'generate' ? '正在生成報告…' : report ? '重新生成報告' : '生成報告'}</button>
-          {repositoryTrace && <details className="reports-details reports-repositoryTrace"><summary>本次 repo 讀取紀錄</summary><p className="reports-caption">Commit {repositoryTrace.commit.slice(0, 12)} · {repositoryTrace.status === 'not_needed' ? '模型判斷本次不需要讀取檔案' : `讀取 ${repositoryTrace.files.length} 段檔案內容`}</p><ul>{repositoryTrace.files.map((file, index) => <li key={index}><a href={file.url} target="_blank" rel="noopener noreferrer">{file.path}:{file.start_line}-{file.end_line}</a></li>)}</ul><p className="reports-caption">紀錄僅代表最近一次成功的生成或修改，並非整份報告的所有來源。</p></details>}
+          {repositoryTrace && <details className="reports-details reports-repositoryTrace"><summary>本次 repo 讀取紀錄</summary><p className="reports-caption">Commit {repositoryTrace.commit.slice(0, 12)} · {repositoryTrace.status === 'not_needed' ? '模型判斷本次不需要讀取檔案' : `讀取 ${repositoryTrace.files.length} 段檔案內容`}{repositoryTrace.cached ? ' · 沿用快取，未重做選檔' : ''}</p><ul>{repositoryTrace.files.map((file, index) => <li key={index}><a href={file.url} target="_blank" rel="noopener noreferrer">{file.path}:{file.start_line}-{file.end_line}</a></li>)}</ul><p className="reports-caption">紀錄僅代表最近一次成功的生成或修改，並非整份報告的所有來源。</p></details>}
         </section>
         <section className="reports-card reports-editorCard" aria-labelledby="report-title">
           <div className="reports-sectionHeader"><div><p className="reports-eyebrow">REPORT DRAFT</p><h2 id="report-title">報告草稿</h2></div><button className="reports-secondary" disabled={!report || !!pending} onClick={download}>下載 Markdown</button></div>
-          <MarkdownEditor value={report} onChange={setReport} disabled={!!pending} onModeChange={setSplitEditor} />
+          <MarkdownEditor value={report} onChange={manualEdit} disabled={!!pending} onModeChange={setSplitEditor} />
+          <div className="reports-exportActions">
+            <button type="button" className="reports-secondary" disabled={!!pending || !report.trim()} onClick={() => { try { setQuality(inspectReport(report, { state, request: focus })); setError(''); } catch { setError('草稿的頁面或講稿格式不完整，請先補齊後再檢查。'); } }}>檢查目前草稿</button>
+            <button type="button" className="reports-secondary" disabled={!!pending || !undoStack.length} onClick={() => restoreVersion('undo')}>復原上一版</button>
+            <button type="button" className="reports-secondary" disabled={!!pending || !redoStack.length} onClick={() => restoreVersion('redo')}>重做</button>
+            <button type="button" className="reports-secondary" disabled={!!pending || !report.trim()} onClick={() => saveBlob(new Blob([JSON.stringify({ report, quality, stateId: state.event_id, commit: state.source_commit_sha, operation: operationStats, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' }), `${state.project_id}-report-review.json`)}>下載報告與審閱紀錄</button>
+          </div>
+          <p className="reports-caption">最多保留 20 個操作版本，僅存在此頁；復原包含報告與對話。離開頁面會提醒先下載。</p>
+          {quality && <details className="reports-quality"><summary>品質檢查：{quality.pageCount} 頁 · 約 {Math.ceil(quality.estimatedSpeakingSeconds / 60)} 分鐘 · {quality.warnings.length} 項待核對</summary><p className="reports-caption">規則檢查不能證明結論正確；沒有顯示來源不等於沒有證據，請人工核對重要事實。</p><ul>{quality.warnings.map((warning, index) => <li key={index}>第 {warning.page} 頁：{warning.message}</li>)}</ul></details>}
           <p className="reports-caption">每次對話修改都使用這裡的最新內容，包括你的手動編輯。</p>
         </section>
         <section className="reports-card" aria-labelledby="chat-title">
           <p className="reports-eyebrow">REFINE TOGETHER</p><h2 id="chat-title">對話修改</h2><p className="reports-detail">描述想調整的段落、語氣或長度。</p>
           <div className="reports-chatLog" aria-label="對話紀錄">{history.length ? history.map((turn, index) => <div className={turn.role === 'user' ? 'reports-userTurn' : 'reports-assistantTurn'} key={index}><strong>{turn.role === 'user' ? '你' : 'Report Agent'}</strong><p>{turn.content}</p></div>) : <p className="reports-empty">例如：將 Project Overview 的講稿縮短，保留目標日期。</p>}</div>
-          <form onSubmit={event => { event.preventDefault(); run('revise'); }}><label className="reports-label" htmlFor="revision-request">修改要求</label><textarea id="revision-request" rows={4} maxLength={4000} value={request} disabled={!!pending || !report.trim()} onChange={event => setRequest(event.target.value)} placeholder="想怎麼調整這份報告？" /><button className="reports-primary" disabled={!!pending || !report.trim() || !request.trim()}>{pending === 'revise' ? '正在修改報告…' : '套用修改'}</button></form>
+          <label className="reports-confirm"><input type="checkbox" checked={reviewChanges} disabled={!!pending} onChange={event => setReviewChanges(event.target.checked)} />修改前先確認差異</label>
+          <form onSubmit={event => { event.preventDefault(); run('revise'); }}><label className="reports-label" htmlFor="revision-request">修改要求</label><textarea id="revision-request" rows={4} maxLength={4000} value={request} disabled={!!pending || !report.trim()} onChange={event => setRequest(event.target.value)} placeholder="想怎麼調整這份報告？" /><button className="reports-primary" disabled={!!pending || !!proposal || !report.trim() || !request.trim()}>{pending === 'revise' ? '正在修改報告…' : reviewChanges ? '預覽修改' : '套用修改'}</button></form>
+          {proposal && <RevisionReview before={proposal.base} after={proposal.report} message={proposal.message} warnings={proposal.quality?.warnings} onAccept={acceptProposal} onReject={() => { setProposal(null); setNotice('已捨棄修改建議，原稿與修改要求已保留。'); }} />}
         </section>
       </div>
       <section className="reports-card reports-slidesSection" aria-labelledby="slides-title">
@@ -238,14 +372,19 @@ export default function ReportWorkspace() {
         </div>
         <p className="reports-caption">自動模式會在產生 slides.md 時呼叫模型，依內容安排每頁轉場、重點逐項顯示與基本版面；報告文字、講稿與來源保持原樣。播放與下載沿用同一份設定，不會再次呼叫模型。</p>
         <label className="reports-confirm"><input type="checkbox" checked={!!report && confirmedReport === report} disabled={!report.trim() || !!pending} onChange={event => setConfirmedReport(event.target.checked ? report : '')} />我已確認目前報告內容</label>
-        <div className="reports-exportActions"><button className="reports-primary" disabled={!!pending || !report.trim() || confirmedReport !== report} onClick={generateSlides}>{pending === 'slides' ? '正在產生原稿…' : '產生 Slidev 原稿'}</button><button className="reports-secondary" disabled={!!pending || !slidesCurrent} onClick={() => slideBundle && saveBlob(new Blob([slideBundle.markdown], { type: 'text/markdown;charset=utf-8' }), `${state.project_id}-slides.md`)}>下載 slides.md</button>{presentationKind === 'web' ? <button className="reports-primary" disabled={!!pending || !slidesCurrent} onClick={createWebDeck}>{pending === 'web' ? '正在建置網頁簡報…' : '建立網頁簡報'}</button> : presentationKind === 'portable' ? <button className="reports-primary" disabled={!!pending || !slidesCurrent} onClick={downloadPortable}>{pending === 'portable' ? '正在打包簡報…' : '下載可攜式資料夾'}</button> : <button className="reports-primary" disabled={!!pending || !slidesCurrent} onClick={downloadPptx}>{pending === 'export' ? '正在匯出 PPTX…' : '下載 PPTX'}</button>}</div>
+        <div className="reports-exportActions"><button className="reports-primary" disabled={!!pending || !report.trim() || confirmedReport !== report} onClick={generateSlides}>{pending === 'slides' ? '正在產生原稿…' : '產生 Slidev 原稿'}</button><button className="reports-secondary" disabled={!!pending || !slidesCurrent} onClick={() => slideBundle && saveBlob(new Blob([slideBundle.markdown], { type: 'text/markdown;charset=utf-8' }), `${state.project_id}-slides.md`)}>下載 slides.md</button>{presentationKind === 'web' ? <button className="reports-primary" disabled={!!pending || !slidesCurrent} onClick={createWebDeck}>{pending === 'web' ? '正在建置網頁簡報…' : '建立網頁簡報'}</button> : presentationKind === 'portable' ? <button className="reports-primary" disabled={!!pending || !slidesCurrent} onClick={downloadPortable}>{pending === 'layout' ? '\u6b63\u5728\u4ee5 Chromium \u9010\u9801\u6aa2\u67e5\u7248\u9762\uff0c\u8acb\u7a0d\u5019\u3002' : pending === 'portable' ? '正在打包簡報…' : '下載可攜式資料夾'}</button> : <button className="reports-primary" disabled={!!pending || !slidesCurrent} onClick={downloadPptx}>{pending === 'export' ? '正在匯出 PPTX…' : '下載 PPTX'}</button>}</div>
+        <button type="button" className="reports-secondary" disabled={!!pending || !slidesCurrent} onClick={inspectSlideLayout}>檢查投影片溢出</button>
+        {layoutResult && slidesCurrent && layoutResult.markdown === slideBundle?.markdown && <p className={layoutResult.overflowPages.length ? 'reports-stale' : 'reports-caption'}>已檢查 {layoutResult.checkedPages} 頁。{layoutResult.overflowPages.length ? `可能溢出的頁面：${layoutResult.overflowPages.map(page => page.page).join('、')}。請縮短可見文字、調整版面或拆頁後重試。` : '未偵測到 DOM 溢出，仍需人工檢查換行、字型與 PPTX 輸出。'}</p>}
         {presentationKind === 'web' ? <p className="reports-caption">網頁簡報在新分頁播放，保留所選轉場。此播放連結僅供目前的本機網站使用，有效約兩小時；需要 Next.js 服務持續運行。</p> : presentationKind === 'portable' ? <p className="reports-caption">下載 ZIP 並解壓縮，Windows 執行 start.cmd；其他系統執行 node serve.mjs，再開啟顯示的網址。播放電腦需安裝 Node.js 22.12 以上，不需要原網站或 API Key。使用系統字型，文字與轉場可離線播放；來源連結仍需網路。目前不支援圖片打包。</p> : <p className="reports-caption">PPTX 不保留網頁轉場；可編輯版的字型與排版可能不同。匯出可能需要一至兩分鐘。</p>}
         {presentationKind === 'web' && webCurrent && webDeck && <div className="reports-webReady"><a href={webDeck.url} target="_blank" rel="noopener noreferrer">開啟播放</a><span>在播放頁使用方向鍵換頁。這是一份已確認報告的獨立快照。</span></div>}
+        {presentationKind === 'web' && webCurrent && webDeck && <details className="reports-slidePreview"><summary>直接預覽網頁簡報</summary><iframe className="reports-slideFrame" src={webDeck.url} title="Slidev 簡報預覽" loading="lazy" /></details>}
         {slideBundle && !slidesCurrent && <p className="reports-stale" role="status">報告或轉場已變更，請重新產生原稿後再匯出。</p>}
         {slideBundle && <details className="reports-details reports-slidePreview"><summary>檢查 Slidev Markdown</summary><label className="reports-label" htmlFor="slides-markdown">簡報原稿（唯讀）</label><textarea id="slides-markdown" rows={12} readOnly value={slideBundle.markdown} spellCheck={false} /></details>}
       </section>
-      <div className="reports-status" role="status">{pending === 'portable' ? '正在建置並打包可攜式簡報，請保留此頁面。' : pending === 'web' ? '正在建置 Slidev 網頁簡報，請保留此頁面。' : pending === 'export' ? '正在渲染並匯出 PPTX，請保留此頁面。' : pending === 'slides' ? '正在轉換簡報原稿。' : pending ? historical && useRepository ? '正在判斷所需檔案並生成或修改報告；請保留此頁面。' : '正在等待模型回覆；服務暫時忙碌時會有限次重試，請保留此頁面。' : notice}</div>
+      <div className="reports-status" role="status">{pending === 'portable' ? '正在建置並打包可攜式簡報，請保留此頁面。' : pending === 'web' ? '正在建置 Slidev 網頁簡報，請保留此頁面。' : pending === 'export' ? '正在渲染並匯出 PPTX，請保留此頁面。' : pending === 'slides' ? '正在轉換簡報原稿。' : pending ? !!dataset.supportsRepository && useRepository ? '正在判斷所需檔案並生成或修改報告；請保留此頁面。' : '正在等待模型回覆；服務暫時忙碌時會有限次重試，請保留此頁面。' : notice}</div>
       {error && <div className="reports-error" role="alert">{error}</div>}
+      {pending && <div className="reports-exportActions"><span>已等待 {elapsed} 秒</span><button type="button" className="reports-secondary" onClick={() => activeOperation.current?.abort()}>取消目前操作</button></div>}
+      {operationStats && <p className="reports-caption">最近操作：模型呼叫 {operationStats.modelCalls} 次 · HTTP 嘗試 {operationStats.httpAttempts} 次 · {(operationStats.durationMs / 1000).toFixed(1)} 秒 · 供應商回報 token：輸入 {operationStats.inputTokens}／輸出 {operationStats.outputTokens}（未回報時為 0）。</p>}
     </main>
   );
 }

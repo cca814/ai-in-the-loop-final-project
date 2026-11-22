@@ -1,13 +1,16 @@
+import { loadHistoricalRepository } from '../test-data/p-limit/adapters/repository-loader.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { retrieveRepositoryContext, loadHistoricalRepository, repositorySources } from './repository-context.js';
+import { retrieveRepositoryContext as retrieveCoreContext, repositorySources } from './repository-context.js';
 import { generateReport } from './index.js';
 import { reviseReport } from './revision.js';
-import { reportHandler } from './http.js';
-import { historicalArchiveUrls } from './repository-archives.js';
+import { fixtureReportHandler as reportHandler } from '../test-data/p-limit/adapters/report-handler.js';
+import { historicalArchiveUrls } from '../test-data/p-limit/adapters/repository-archives.js';
 import { ProviderError } from './errors.js';
+
+const retrieveRepositoryContext = (args, options) => retrieveCoreContext(args, { loadSnapshot: loadHistoricalRepository, ...options });
 
 const root = new URL('../test-data/p-limit/', import.meta.url);
 const inventory = JSON.parse(await readFile(new URL('inventory.json', root)));

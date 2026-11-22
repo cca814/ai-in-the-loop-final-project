@@ -1,3 +1,3 @@
-import { reportHandler } from '../../../../report-agent/http.js';
+import { fixtureReportHandler } from '../../../../test-data/p-limit/adapters/report-handler.js';
 
-export const POST = reportHandler('generate');
+export const POST = fixtureReportHandler('generate');

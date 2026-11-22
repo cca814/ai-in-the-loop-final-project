@@ -19,11 +19,11 @@ slides.md 是保留原文的 Slidev 原稿；編輯它不會自動更新 site �
 請只下載並執行你信任的簡報資料夾。本機伺服器只監聽 127.0.0.1。
 `;
 
-export async function exportPortable(slides, { build = buildWebSlides } = {}) {
+export async function exportPortable(slides, { build = buildWebSlides, signal } = {}) {
   // Until image asset bundling is supported, fail explicitly rather than ship
   // a supposedly portable deck with broken external/local image references.
   if (/!\[[^\]]*\]\s*(?:\(|\[)/.test(slides) || /^\s*\[[^\]]+\]:/m.test(slides)) throw new Error('Portable images are not supported');
-  const { directory } = await build(slides, { portable: true });
+  const { directory } = await build(slides, { portable: true, signal });
   try {
     const zip = new JSZip();
     const folder = zip.folder('presentation');

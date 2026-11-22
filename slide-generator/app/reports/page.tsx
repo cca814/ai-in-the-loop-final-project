@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import ReportWorkspace from './workspace';
+import { stateDatasets } from './state-datasets';
 
 export const metadata: Metadata = {
   title: 'Reports | Bridging Code and Intent',
@@ -7,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function ReportsPage() {
-  return <ReportWorkspace />;
+  return <ReportWorkspace datasets={stateDatasets} />;
 }

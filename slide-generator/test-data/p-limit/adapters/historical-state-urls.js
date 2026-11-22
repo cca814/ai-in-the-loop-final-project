@@ -1,0 +1,25 @@
+// Explicit server-only assets avoid dynamic URL folding in Turbopack.
+export const historicalStateUrls = {
+  '001-pr-1.json': new URL('../states/001-pr-1.json', import.meta.url),
+  '002-pr-4.json': new URL('../states/002-pr-4.json', import.meta.url),
+  '003-pr-7.json': new URL('../states/003-pr-7.json', import.meta.url),
+  '004-pr-8.json': new URL('../states/004-pr-8.json', import.meta.url),
+  '005-pr-9.json': new URL('../states/005-pr-9.json', import.meta.url),
+  '006-pr-11.json': new URL('../states/006-pr-11.json', import.meta.url),
+  '007-pr-12.json': new URL('../states/007-pr-12.json', import.meta.url),
+  '008-pr-20.json': new URL('../states/008-pr-20.json', import.meta.url),
+  '009-pr-28.json': new URL('../states/009-pr-28.json', import.meta.url),
+  '010-pr-30.json': new URL('../states/010-pr-30.json', import.meta.url),
+  '011-pr-35.json': new URL('../states/011-pr-35.json', import.meta.url),
+  '012-pr-47.json': new URL('../states/012-pr-47.json', import.meta.url),
+  '013-pr-50.json': new URL('../states/013-pr-50.json', import.meta.url),
+  '014-pr-71.json': new URL('../states/014-pr-71.json', import.meta.url),
+  '015-pr-83.json': new URL('../states/015-pr-83.json', import.meta.url),
+  '016-pr-79.json': new URL('../states/016-pr-79.json', import.meta.url),
+  '017-pr-88.json': new URL('../states/017-pr-88.json', import.meta.url),
+  '018-pr-93.json': new URL('../states/018-pr-93.json', import.meta.url),
+  '019-pr-98.json': new URL('../states/019-pr-98.json', import.meta.url),
+  '020-pr-108.json': new URL('../states/020-pr-108.json', import.meta.url),
+  '021-pr-109.json': new URL('../states/021-pr-109.json', import.meta.url),
+};
+

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(fileURLToPath(import.meta.url));
 const execute = promisify(execFile);
 
-export async function exportPptx(slides, { format = 'pptx', run = execute } = {}) {
+export async function exportPptx(slides, { format = 'pptx', run = execute, signal } = {}) {
   if (!['pptx', 'pptx-editable'].includes(format)) throw new Error('Unsupported PPTX format');
   const cli = join(root, 'node_modules/@slidev/cli/bin/slidev.mjs');
   await stat(cli);
@@ -22,7 +22,7 @@ export async function exportPptx(slides, { format = 'pptx', run = execute } = {}
     const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP, USERPROFILE: process.env.USERPROFILE, NODE_ENV: 'development' };
     const localBrowsers = join(root, 'node_modules/.playwright-browsers');
     try { await stat(localBrowsers); env.PLAYWRIGHT_BROWSERS_PATH = localBrowsers; } catch { /* Use Playwright's default browser location. */ }
-    await run(process.execPath, [cli, 'export', entry, '--format', format, '--output', output, '--with-clicks', 'false'], { cwd: root, env, timeout: 120_000, maxBuffer: 2_000_000, windowsHide: true });
+    await run(process.execPath, [cli, 'export', entry, '--format', format, '--output', output, '--with-clicks', 'false'], { cwd: root, env, signal, timeout: 120_000, maxBuffer: 2_000_000, windowsHide: true });
     const buffer = await readFile(output);
     if (buffer[0] !== 0x50 || buffer[1] !== 0x4b) throw new Error('Invalid PPTX output');
     return buffer;

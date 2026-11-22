@@ -25,7 +25,7 @@ async function cleanExpired() {
   }
 }
 
-export async function buildWebSlides(slides, { run = execute, portable = false } = {}) {
+export async function buildWebSlides(slides, { run = execute, portable = false, signal } = {}) {
   await cleanExpired();
   const id = randomUUID();
   const directory = join(decksRoot, id);
@@ -37,7 +37,7 @@ export async function buildWebSlides(slides, { run = execute, portable = false }
     const buildSource = portable ? slides.replace(/^---\r?\n/, '---\nfonts:\n  provider: none\n') : slides;
     await writeFile(entry, buildSource, 'utf8');
     const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP, USERPROFILE: process.env.USERPROFILE, NODE_ENV: 'production' };
-    await run(process.execPath, [join(root, 'node_modules/@slidev/cli/bin/slidev.mjs'), 'build', entry, '--base', base, '--out', 'dist'], { cwd: root, env, timeout: 120_000, maxBuffer: 2_000_000, windowsHide: true });
+    await run(process.execPath, [join(root, 'node_modules/@slidev/cli/bin/slidev.mjs'), 'build', entry, '--base', base, '--out', 'dist'], { cwd: root, env, signal, timeout: 120_000, maxBuffer: 2_000_000, windowsHide: true });
     await stat(join(directory, 'dist/index.html'));
     return portable ? { directory } : { url: base, expiresAt: new Date(Date.now() + lifetime).toISOString() };
   } catch (error) {
