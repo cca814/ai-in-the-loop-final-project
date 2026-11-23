@@ -1,9 +1,9 @@
 # Slide Generator API
 
-The Slide Generator stores Project State snapshots in Firestore and serves them over HTTP.
+The Slide Generator stores Project State snapshots, `report.md` files and `slides.md` files in Firestore and serves them over HTTP.
 
 - **GitHub Actions** (Intent Supervisor) submit a snapshot after each merged PR.
-- **The frontend** reads projects, the current state and the snapshot history.
+- **The frontend** reads projects, the current state and the snapshot history, and saves and opens `report.md` and `slides.md`.
 
 The format of a snapshot is defined in [`schemas/project_state.schema.json`](schemas/project_state.schema.json) and explained field by field in [`schemas/README.md`](schemas/README.md). Example snapshots are in [`schemas/examples/`](schemas/examples/).
 
@@ -16,6 +16,10 @@ The format of a snapshot is defined in [`schemas/project_state.schema.json`](sch
 | `GET` | `/api/projects/{projectId}/state` | Frontend, GitHub Actions | None |
 | `GET` | `/api/projects/{projectId}/states` | Frontend | None |
 | `GET` | `/api/projects/{projectId}/states/{eventId}` | Frontend | None |
+| `POST` | `/api/projects/{projectId}/reports` | Frontend | None |
+| `GET` | `/api/projects/{projectId}/reports` | Frontend | None |
+| `GET` | `/api/projects/{projectId}/reports/{reportId}` | Frontend | None |
+| `PUT` | `/api/projects/{projectId}/reports/{reportId}` | Frontend | None |
 | `GET` | `/api/health` | Anyone | None |
 
 ## Conventions
@@ -223,6 +227,105 @@ Returns one full snapshot, in the same format as the POST body.
 | `200` | The snapshot. |
 | `404` | `{ "error": "state_not_found" }` |
 
+### Reports and slides
+
+A saved file is either a `report.md` (`"type": "report"`) or a `slides.md` (`"type": "slides"`). Both kinds are stored together and share these endpoints.
+
+Only the latest content is kept. Each save overwrites the previous content, and earlier content cannot be read back. If two tabs save the same file, the last save wins.
+
+### `POST /api/projects/{projectId}/reports`
+
+Saves a new file and returns its `id`. Use this the first time a file is saved, and `PUT` with the `id` after that.
+
+Request body, at most 800 KB:
+
+```json
+{
+  "name": "Week 12 progress report",
+  "type": "report",
+  "content": "# Progress\n\n..."
+}
+```
+
+| Field | Rule |
+| --- | --- |
+| `name` | 1 to 200 characters. Names do not need to be unique. |
+| `type` | `report` or `slides`. It cannot change after the file is created. |
+| `content` | The Markdown text. It may be empty. |
+
+Responses:
+
+| Status | Body |
+| --- | --- |
+| `201` | `{ "id": "8ZPWLqiGyWY6fm0jQImO", "name": "Week 12 progress report", "type": "report", "updated_at": "2026-11-23T14:53:59.446Z" }` |
+| `400` | `{ "error": "invalid_json" }` |
+| `400` | `{ "error": "invalid_report", "details": [ ... ] }`: a field is missing or breaks a rule above, or there is an extra field. |
+| `404` | `{ "error": "project_not_found" }` |
+| `413` | `{ "error": "payload_too_large" }` |
+
+### `GET /api/projects/{projectId}/reports`
+
+Lists the project's saved files, most recently updated first. Each item has no `content`. To read the content, call `GET /api/projects/{projectId}/reports/{reportId}`.
+
+Response `200`:
+
+```json
+{
+  "reports": [
+    {
+      "id": "8ZPWLqiGyWY6fm0jQImO",
+      "name": "Week 12 slides",
+      "type": "slides",
+      "updated_at": "2026-11-23T14:56:39.447Z"
+    },
+    {
+      "id": "FVcPYaDRxstqWjVHAlPS",
+      "name": "Week 12 progress report",
+      "type": "report",
+      "updated_at": "2026-11-23T14:42:07.525Z"
+    }
+  ]
+}
+```
+
+| Status | Body |
+| --- | --- |
+| `404` | `{ "error": "project_not_found" }` |
+
+### `GET /api/projects/{projectId}/reports/{reportId}`
+
+Returns one file with its content.
+
+Response `200`:
+
+```json
+{
+  "id": "8ZPWLqiGyWY6fm0jQImO",
+  "name": "Week 12 slides",
+  "type": "slides",
+  "content": "# Progress\n\n...",
+  "created_at": "2026-11-23T14:53:59.446Z",
+  "updated_at": "2026-11-23T14:56:39.447Z"
+}
+```
+
+| Status | Body |
+| --- | --- |
+| `404` | `{ "error": "report_not_found" }` |
+
+### `PUT /api/projects/{projectId}/reports/{reportId}`
+
+Overwrites the name and content of a saved file. The body is the same as for `POST`, and `type` must equal the type the file was created with.
+
+| Status | Body |
+| --- | --- |
+| `200` | `{ "id": "8ZPWLqiGyWY6fm0jQImO", "name": "Week 12 slides", "type": "slides", "updated_at": "2026-11-23T14:56:39.447Z" }` |
+| `400` | `{ "error": "invalid_json" }` |
+| `400` | `{ "error": "invalid_report", "details": [ ... ] }` |
+| `400` | `{ "error": "type_mismatch", "type": "slides" }`: the file was created with another type, shown in `type`. Nothing changed. |
+| `404` | `{ "error": "report_not_found" }` |
+| `413` | `{ "error": "payload_too_large" }` |
+
 ### `GET /api/health`
 
 Checks that the server can reach Firestore.
@@ -243,6 +346,10 @@ Response `200`:
 | Show a project's current milestones, features and risks | `GET /api/projects/{projectId}/state` |
 | List what was merged in a reporting period | `GET /api/projects/{projectId}/states?from=...&to=...`, then read each `trigger` |
 | Open one snapshot from the list | `GET /api/projects/{projectId}/states/{eventId}` |
+| Save a `report.md` or `slides.md` for the first time | `POST /api/projects/{projectId}/reports`, then keep the returned `id` |
+| Save it again | `PUT /api/projects/{projectId}/reports/{reportId}` |
+| List saved files by name | `GET /api/projects/{projectId}/reports` |
+| Open a saved file | `GET /api/projects/{projectId}/reports/{reportId}` |
 
 ```ts
 const params = new URLSearchParams({
@@ -251,4 +358,19 @@ const params = new URLSearchParams({
 });
 const res = await fetch(`/api/projects/${projectId}/states?${params}`);
 const { snapshots, truncated } = await res.json();
+```
+
+```ts
+// First save: create the file and keep its id.
+const created = await fetch(`/api/projects/${projectId}/reports`, {
+  method: "POST",
+  body: JSON.stringify({ name, type: "slides", content }),
+});
+const { id } = await created.json();
+
+// Later saves: overwrite the same file.
+await fetch(`/api/projects/${projectId}/reports/${id}`, {
+  method: "PUT",
+  body: JSON.stringify({ name, type: "slides", content }),
+});
 ```
