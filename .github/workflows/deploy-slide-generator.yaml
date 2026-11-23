@@ -1,0 +1,49 @@
+name: Deploy Slide Generator
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "slide-generator/**"
+      - ".github/workflows/deploy-slide-generator.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-slide-generator
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SLIDE_API_URL: ${{ vars.SLIDE_API_URL }}
+
+    defaults:
+      run:
+        working-directory: slide-generator
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Deploy to Vercel production
+        run: npx --yes vercel@66.6.0 deploy --prod --yes --token="$VERCEL_TOKEN"
+
+      - name: Check health
+        if: env.SLIDE_API_URL != ''
+        run: curl --fail-with-body -sS "$SLIDE_API_URL/api/health"
