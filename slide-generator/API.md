@@ -20,7 +20,7 @@ The format of a snapshot is defined in [`schemas/project_state.schema.json`](sch
 
 ## Conventions
 
-- **Base URL:** `http://localhost:3000` in local development. The Vercel URL will be added after deployment.
+- **Base URL:** `https://slide-generator-delta.vercel.app` in production, `http://localhost:3000` in local development.
 - **Format:** Requests and responses are JSON.
 - **Errors:** Every error response has an `error` code. Some also have `details`.
 
