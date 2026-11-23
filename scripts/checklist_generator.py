@@ -10,12 +10,12 @@ from urllib.parse import quote
 
 DEFAULT_MODELS = {
     "openai": "gpt-4.1-mini",
-    "claude": "claude-sonnet-4-20250514",
+    "anthropic": "claude-sonnet-4-20250514",
     "gemini": "gemini-3.5-flash-lite",
 }
 API_KEYS = {
     "openai": "OPENAI_API_KEY",
-    "claude": "ANTHROPIC_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
     "gemini": "GEMINI_API_KEY",
 }
 MAX_CONTEXT_CHARS = 120000
