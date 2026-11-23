@@ -60,7 +60,7 @@ jobs:
             echo "provider=openai" >> "$GITHUB_OUTPUT"
 
           elif [[ -n "$ANTHROPIC_API_KEY" ]]; then
-            echo "provider=claude" >> "$GITHUB_OUTPUT"
+            echo "provider=anthropic" >> "$GITHUB_OUTPUT"
 
           else
             echo "::error::No AI API key configured"
