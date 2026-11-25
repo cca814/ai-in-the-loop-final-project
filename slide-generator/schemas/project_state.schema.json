@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Project State",
-  "description": "A complete snapshot of one project's state, submitted by the Intent Supervisor to POST /api/projects/{projectId}/states.",
+  "description": "One project's state after a merged PR, submitted by the Intent Supervisor to POST /api/projects/{projectId}/states. The workflow script fills every field except content; content is the state itself, written as Markdown, and is stored as is.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,16 +12,12 @@
     "source_commit_sha",
     "base_state_id",
     "updated_at",
-    "milestones",
-    "features",
-    "trigger",
-    "risks",
-    "source_refs",
-    "data_gaps"
+    "pull_request",
+    "content"
   ],
   "properties": {
     "event_id": {
-      "description": "Identifies this submission. Must stay the same when the same workflow run is retried, e.g. \"gh-run-<github.run_id>\". Used as the Firestore document ID of the stored state, so it must not contain '/'.",
+      "description": "Identifies this submission. Must stay the same when the same workflow run is retried, e.g. \"gh-run-<github.run_id>\". Used as the Firestore document ID, so it must not contain '/'.",
       "$ref": "#/$defs/documentId"
     },
     "project_id": {
@@ -42,28 +38,38 @@
           "type": "string",
           "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
         },
-        "url": {
-          "$ref": "#/$defs/url"
-        }
+        "url": { "$ref": "#/$defs/url" }
       }
     },
     "source_commit_sha": {
-      "description": "The commit on the default branch created by the trigger, i.e. the merge commit of the merged PR.",
+      "description": "The merge commit of the merged PR on the default branch.",
       "$ref": "#/$defs/commitSha"
     },
     "base_state_id": {
-      "description": "The state this snapshot was built on (the event_id of the previous accepted state). null only for the first state of a project. The server returns 409 if it is no longer the project's current state.",
+      "description": "The event_id of the previous accepted state. null only for the first state of a project. The server returns 409 if it is no longer the project's current state.",
       "oneOf": [
         { "$ref": "#/$defs/documentId" },
         { "type": "null" }
       ]
     },
     "updated_at": {
-      "description": "When the upstream data was collected. ISO 8601 with a time zone offset.",
+      "description": "When the state was collected. ISO 8601 with a time zone offset.",
       "$ref": "#/$defs/dateTime"
     },
+    "pull_request": {
+      "description": "The merged PR that produced this state.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "title", "url", "merged_at"],
+      "properties": {
+        "number": { "type": "integer", "minimum": 1 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "url": { "$ref": "#/$defs/url" },
+        "merged_at": { "$ref": "#/$defs/dateTime" }
+      }
+    },
     "generator": {
-      "description": "Optional. What produced this snapshot, for tracing.",
+      "description": "Optional. What produced content, for tracing.",
       "type": "object",
       "additionalProperties": false,
       "required": ["name", "version"],
@@ -73,35 +79,10 @@
         "model": { "$ref": "#/$defs/shortText" }
       }
     },
-    "milestones": {
-      "type": "array",
-      "maxItems": 50,
-      "items": { "$ref": "#/$defs/milestone" }
-    },
-    "features": {
-      "type": "array",
-      "maxItems": 100,
-      "items": { "$ref": "#/$defs/feature" }
-    },
-    "trigger": {
-      "description": "The PR merge that produced this snapshot. The Slide Generator lists the triggers of all snapshots in a period to describe what changed.",
-      "$ref": "#/$defs/trigger"
-    },
-    "risks": {
-      "type": "array",
-      "maxItems": 50,
-      "items": { "$ref": "#/$defs/risk" }
-    },
-    "source_refs": {
-      "type": "array",
-      "maxItems": 300,
-      "items": { "$ref": "#/$defs/sourceRef" }
-    },
-    "data_gaps": {
-      "description": "Sections the upstream could not assess. An empty risks array with no data gap means 'assessed, no risks found'; a data gap means 'not assessed'.",
-      "type": "array",
-      "maxItems": 20,
-      "items": { "$ref": "#/$defs/dataGap" }
+    "content": {
+      "description": "The project state as Markdown. The server stores it without checking its structure.",
+      "type": "string",
+      "minLength": 1
     }
   },
   "$defs": {
@@ -109,28 +90,10 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
     },
-    "id": {
-      "description": "Identifier unique within the snapshot, e.g. \"pr-42\" or \"feature-report-editor\".",
-      "type": "string",
-      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
-    },
-    "sourceRefIds": {
-      "description": "Every claim must point to at least one entry in source_refs.",
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 20,
-      "uniqueItems": true,
-      "items": { "$ref": "#/$defs/id" }
-    },
     "shortText": {
       "type": "string",
       "minLength": 1,
       "maxLength": 200
-    },
-    "longText": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 2000
     },
     "url": {
       "type": "string",
@@ -138,131 +101,14 @@
       "pattern": "^https://",
       "maxLength": 500
     },
-    "commitSha": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{40}$"
-    },
     "dateTime": {
       "type": "string",
       "format": "date-time",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
     },
-    "workStatus": {
-      "description": "done requires at least one merged PR as evidence; an issue or document alone is not enough.",
-      "enum": ["planned", "in_progress", "done", "blocked", "unknown"]
-    },
-    "milestone": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "status", "source_ref_ids"],
-      "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "name": { "$ref": "#/$defs/shortText" },
-        "status": { "$ref": "#/$defs/workStatus" },
-        "target_date": {
-          "description": "Only if stated in a source. Omit rather than guess.",
-          "type": "string",
-          "format": "date",
-          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-        },
-        "summary": { "$ref": "#/$defs/longText" },
-        "source_ref_ids": { "$ref": "#/$defs/sourceRefIds" }
-      }
-    },
-    "feature": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "status", "summary", "source_ref_ids"],
-      "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "name": { "$ref": "#/$defs/shortText" },
-        "status": { "$ref": "#/$defs/workStatus" },
-        "summary": { "$ref": "#/$defs/longText" },
-        "milestone_id": {
-          "description": "Optional link to a milestone in this snapshot.",
-          "$ref": "#/$defs/id"
-        },
-        "source_ref_ids": { "$ref": "#/$defs/sourceRefIds" }
-      }
-    },
-    "trigger": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["source_ref_id", "summary"],
-      "properties": {
-        "source_ref_id": {
-          "description": "The merged PR. Must refer to a pull_request entry in source_refs.",
-          "$ref": "#/$defs/id"
-        },
-        "summary": {
-          "description": "What the merged code changed, written for a progress report.",
-          "$ref": "#/$defs/longText"
-        },
-        "feature_ids": {
-          "description": "Optional. Features this change moved forward.",
-          "type": "array",
-          "maxItems": 20,
-          "uniqueItems": true,
-          "items": { "$ref": "#/$defs/id" }
-        }
-      }
-    },
-    "risk": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "kind", "title", "description", "severity", "source_ref_ids"],
-      "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "kind": { "enum": ["risk", "blocker", "design_drift"] },
-        "title": { "$ref": "#/$defs/shortText" },
-        "description": { "$ref": "#/$defs/longText" },
-        "impact": { "$ref": "#/$defs/longText" },
-        "severity": { "enum": ["low", "medium", "high", "unknown"] },
-        "source_ref_ids": { "$ref": "#/$defs/sourceRefIds" }
-      }
-    },
-    "sourceRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "type", "url"],
-      "properties": {
-        "id": { "$ref": "#/$defs/id" },
-        "type": {
-          "description": "pull_request entries are always merged PRs; open PRs are never listed.",
-          "enum": ["pull_request", "issue", "document"]
-        },
-        "url": { "$ref": "#/$defs/url" },
-        "title": { "$ref": "#/$defs/shortText" },
-        "number": { "type": "integer", "minimum": 1 },
-        "status": {
-          "description": "Issues only.",
-          "enum": ["open", "closed"]
-        },
-        "path": { "type": "string", "minLength": 1, "maxLength": 300 }
-      },
-      "allOf": [
-        {
-          "if": { "properties": { "type": { "const": "pull_request" } } },
-          "then": { "required": ["number"], "not": { "required": ["status"] } }
-        },
-        {
-          "if": { "properties": { "type": { "const": "issue" } } },
-          "then": { "required": ["number", "status"] }
-        },
-        {
-          "if": { "properties": { "type": { "const": "document" } } },
-          "then": { "required": ["path"] }
-        }
-      ]
-    },
-    "dataGap": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["section", "reason"],
-      "properties": {
-        "section": { "enum": ["milestones", "features", "risks"] },
-        "reason": { "$ref": "#/$defs/longText" }
-      }
+    "commitSha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
     }
   }
 }
