@@ -35,7 +35,7 @@ The format of a snapshot is defined in [`schemas/project_state.schema.json`](sch
 - **Times:** Times are ISO 8601 with a time zone offset, such as `2026-11-15T10:35:00+08:00` or `2026-11-15T02:35:00Z`. A time without an offset is rejected.
 - **URL encoding:** In a query string, `+` means a space. Encode `+08:00` as `%2B08:00` with `URLSearchParams` or `encodeURIComponent`, or use `curl -G --data-urlencode`.
 - **`projectId`:** 2 to 63 characters: lowercase letters, digits and `-`, starting with a letter or digit. For example, `demo-app`.
-- **Snapshots are complete:** Each snapshot is the full state of the project when a PR was merged, not only the changes from that PR. `trigger` is the PR that produced it.
+- **Snapshots are complete:** Each snapshot describes the whole project when a PR was merged, not only the changes from that PR. `pull_request` is the PR that produced it, and `content` is the state as Markdown.
 
 ---
 
@@ -53,7 +53,7 @@ The format of a snapshot is defined in [`schemas/project_state.schema.json`](sch
 1. Call `GET /api/projects/{projectId}/state`.
    - `200`: Use its `event_id` as `base_state_id` in the new snapshot.
    - `404`: This is the project's first snapshot. Use `"base_state_id": null`.
-2. Build the new complete snapshot. Use `"event_id": "gh-run-<github.run_id>"`. It stays the same when the run is re-run, so a repeated submission is not stored twice.
+2. Build the new snapshot: fill the fields as described in [`schemas/README.md`](schemas/README.md#where-the-script-gets-each-value), and put the Markdown in `content`. Use `"event_id": "gh-run-<github.run_id>"`. It stays the same when the run is re-run, so a repeated submission is not stored twice.
 3. Call `POST /api/projects/{projectId}/states`.
 
 Only one run per project should submit at a time. Otherwise, two runs can read the same base and the second one gets `409`.
@@ -74,13 +74,7 @@ Stores a new snapshot and makes it the project's current state.
 | Header | `Content-Type: application/json` |
 | Body | One Project State snapshot, at most 800 KB |
 
-Besides the JSON Schema, the server checks these rules:
-
-1. `project_id` in the body equals `{projectId}` in the URL.
-2. Ids are unique within `milestones`, `features`, `risks` and `source_refs`.
-3. Every `source_ref_ids` entry, `milestone_id` and `trigger.feature_ids` entry refers to an item in the snapshot.
-4. A `done` feature or milestone cites at least one `pull_request`.
-5. `trigger.source_ref_id` refers to a `pull_request` in `source_refs`.
+Besides the JSON Schema, the server checks that `project_id` in the body equals `{projectId}` in the URL. It does not check the structure of `content`.
 
 #### Responses
 
@@ -89,20 +83,19 @@ Besides the JSON Schema, the server checks these rules:
 | `201` | Stored. It is now the current state. | `{ "ok": true, "state_id": "gh-run-1002" }` |
 | `200` | A snapshot with this `event_id` was already stored. Nothing changed. | `{ "ok": true, "duplicate": true, "state_id": "gh-run-1002" }` |
 | `400` | The body is not valid JSON. | `{ "error": "invalid_json" }` |
-| `400` | The snapshot breaks the schema or a rule above. | `{ "error": "invalid_project_state", "details": [ ... ] }` |
+| `400` | The snapshot breaks the schema, or `project_id` does not match the URL. | `{ "error": "invalid_project_state", "details": [ ... ] }` |
 | `401` | The token is missing or wrong. | `{ "error": "unauthorized" }` |
 | `409` | `base_state_id` is not the project's current state. Not stored. | `{ "error": "stale_base_state", "current_state_id": "gh-run-1003" }` |
 | `413` | The body is larger than 800 KB. | `{ "error": "payload_too_large" }` |
 
-`details` lists every problem found. Schema errors are reported first; the rules are checked only after the schema passes.
+`details` lists every schema problem found. `project_id` is compared with the URL only after the schema passes.
 
 ```json
 {
   "error": "invalid_project_state",
   "details": [
-    "features \"feature-login\": unknown source_ref_id \"nope\"",
-    "features \"feature-login\": done must cite a pull_request",
-    "trigger.source_ref_id must refer to a pull_request in source_refs"
+    "/pull_request must have required property 'merged_at'",
+    "/content must NOT have fewer than 1 characters"
   ]
 }
 ```
@@ -138,7 +131,7 @@ Returns the project's current snapshot.
 
 Response `200`:
 
-The full snapshot, in the same format as the POST body. See [`schemas/examples/feature_done.json`](schemas/examples/feature_done.json).
+The full snapshot, in the same format as the POST body. See [`schemas/examples/gh-run-1003.json`](schemas/examples/gh-run-1003.json).
 
 | Status | Body |
 | --- | --- |
@@ -146,7 +139,7 @@ The full snapshot, in the same format as the POST body. See [`schemas/examples/f
 
 ### `GET /api/projects/{projectId}/states`
 
-Lists the project's snapshots, oldest first. Each item has only the trigger, not the full snapshot. To read one in full, call `GET /api/projects/{projectId}/states/{eventId}`.
+Lists the project's snapshots, oldest first. Each item has only the merged PR, not `content`. To read one in full, call `GET /api/projects/{projectId}/states/{eventId}`.
 
 #### Query parameters
 
@@ -173,32 +166,22 @@ Response `200`:
       "event_id": "gh-run-1002",
       "updated_at": "2026-11-15T10:35:00+08:00",
       "source_commit_sha": "3f2a9c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39",
-      "trigger": {
-        "summary": "Added Markdown preview to the report editor.",
-        "feature_ids": ["feature-report-editor"],
-        "source_ref": {
-          "id": "pr-41",
-          "type": "pull_request",
-          "url": "https://github.com/example-org/demo-app/pull/41",
-          "title": "Add Markdown preview",
-          "number": 41
-        }
+      "pull_request": {
+        "number": 41,
+        "title": "Add Markdown preview",
+        "url": "https://github.com/example-org/demo-app/pull/41",
+        "merged_at": "2026-11-15T02:30:12Z"
       }
     },
     {
       "event_id": "gh-run-1003",
       "updated_at": "2026-11-17T18:00:00+08:00",
       "source_commit_sha": "9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b",
-      "trigger": {
-        "summary": "Added saving of report versions, which completes the report editor.",
-        "feature_ids": ["feature-report-editor"],
-        "source_ref": {
-          "id": "pr-42",
-          "type": "pull_request",
-          "url": "https://github.com/example-org/demo-app/pull/42",
-          "title": "Save report versions",
-          "number": 42
-        }
+      "pull_request": {
+        "number": 42,
+        "title": "Save report versions",
+        "url": "https://github.com/example-org/demo-app/pull/42",
+        "merged_at": "2026-11-17T09:55:03Z"
       }
     }
   ],
@@ -210,7 +193,7 @@ Response `200`:
 | --- | --- |
 | `from`, `to` | The requested range in UTC, or `null` if not given. |
 | `snapshots[].updated_at` | As submitted, with its original offset. |
-| `snapshots[].trigger.source_ref` | The merged PR that produced the snapshot. |
+| `snapshots[].pull_request` | The merged PR that produced the snapshot. |
 | `truncated` | `true` if more than 200 snapshots match. Only the oldest 200 are returned; narrow the range to see the rest. |
 
 | Status | Body |
@@ -343,8 +326,8 @@ Response `200`:
 | Task | Call |
 | --- | --- |
 | Show the project list | `GET /api/projects` |
-| Show a project's current milestones, features and risks | `GET /api/projects/{projectId}/state` |
-| List what was merged in a reporting period | `GET /api/projects/{projectId}/states?from=...&to=...`, then read each `trigger` |
+| Show a project's current state | `GET /api/projects/{projectId}/state`, then render `content` as Markdown |
+| List what was merged in a reporting period | `GET /api/projects/{projectId}/states?from=...&to=...`, then read each `pull_request` |
 | Open one snapshot from the list | `GET /api/projects/{projectId}/states/{eventId}` |
 | Save a `report.md` or `slides.md` for the first time | `POST /api/projects/{projectId}/reports`, then keep the returned `id` |
 | Save it again | `PUT /api/projects/{projectId}/reports/{reportId}` |
