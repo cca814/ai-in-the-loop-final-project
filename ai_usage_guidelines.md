@@ -1,17 +1,17 @@
 # AI Usage Guidelines
 
-## section 1 — What AI tools we plan to use, and what we will use each for
+## Section 1 — What AI tools we plan to use, and what we will use each for
 
-We decided to use ChatGPT 6 Astra / Claude Opus 5.5 to create the initial architecture, and a human always reviews and edits it before it is merged. It cannot git push to the remote repository by itself.
+We use ChatGPT 6 Astra / Claude Opus 5.5 to draft architecture and code. Before merge, a non-author reviewer must explain the change, name one risk, and record a check in the PR. Setup or usage changes must include updated README steps verified by that reviewer. AI cannot push to the remote repository by itself.
 
 ---
 
 ## Section 2 — How we will document AI interactions
 
-In the PR message, we should write "AI was involved" so that we can know which PRs used AI assistance. If AI suggests changing the architecture, we should document it in `DECISION.md`, and all teammates should agree before changing the architecture.
+Every PR must name the AI tool, what it generated, whether it generated most of the change, and the author’s edits; write “none” if unused. AI-suggested architecture changes must be recorded in `DECISIONS.md` and agreed on by all teammates.
 
 ---
 
 ## Section 3 — How we will handle disagreements about AI output quality
 
-Anyone who wants to use AI to generate code should make sure it passes all existing tests, and we should follow the linter configuration. If engineers disagree about AI-generated code quality, Aron has the final say and can give advice on how to modify the changes.
+AI-assisted behavior changes must include test files, commands, and results, and pass existing tests and lint checks. Prompt changes must show before/after results for normal and off-task inputs. If engineers disagree about AI-generated code quality, Aron has the final say and advises on revisions.
