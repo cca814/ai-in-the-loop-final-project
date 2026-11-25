@@ -46,3 +46,10 @@ We also listed candidate features to consider after the core pipeline works:
 **Outcome:** The schema and example data are in `slide-generator/schemas/`.  
 **Who:** Eddy, in discussion with all team members.  
 **Why:** To keep both pairs working from the same data format, so the Intent Supervisor's output can be used directly by the Slide Generator.
+
+## 2026-11-23 — Report and slides storage
+
+**What:** Decided how the web page saves `report.md` and `slides.md`.  
+**Outcome:** The user names a file in the web page and saves it. Both file types are stored in Firestore at `projects/{projectId}/reports/{reportId}`, with a `type` of `report` or `slides`. The server assigns the id on the first save, and later saves overwrite the same file, so only the latest content is kept. A file is not tied to a Project State snapshot. The API lists saved files by name and returns the content when one is opened. This replaces the per-snapshot draft in the mock storage and the saved report versions proposed earlier. The API is described in `slide-generator/API.md`.  
+**Who:** Eddy and Ray.  
+**Why:** A report can cover several Project State snapshots, so saving one draft per snapshot would not work. Earlier versions are not needed, so keeping only the latest content keeps the API simple.
