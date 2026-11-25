@@ -66,12 +66,24 @@ The full input and output of each endpoint are in [`slide-generator/API.md`](../
 
 ## 4. Report Editing
 
-TBD
+The local `/reports` page supports manual Markdown editing, rendered/split preview, synchronized scrolling, undo/redo and downloads. Checks run automatically; each page needs a title and speaker notes. Sources is optional.
 
-## 5. LLM Report Generation and Revision
+Report/slide edits remain in page memory: download before refresh. Conversation editing and draft save/load remain implemented but are hidden in the website.
 
-TBD
+## 5. LLM Report Generation
 
-## 6. Slidev Presentation Generation
+[Report Agent](../slide-generator/report-agent/README.md) separates evidence, prompts, providers and validation. Gemini, Groq and OpenAI are supported. The writing brief determines structure; missing evidence stays explicit.
 
-TBD
+Optional repo reading uses selected-commit excerpts. Validation checks format and source references, not every factual claim.
+
+## 6. Slidev Generation
+
+Confirmed report -> editable Slidev Markdown -> web presentation, PPTX or portable ZIP. Automatic effects call a model; fixed transitions do not. All outputs use the edited source.
+
+Unsupported executable syntax is rejected. PPTX and overflow checks need Chromium; fonts/layout still need human review. See [slide export](../slide-generator/slide-export/README.md).
+
+## 7. Run and Scope
+
+Follow [setup](../slide-generator/README.md) and [tests](../slide-generator/TESTING.md). The report website currently uses local Mock States. Optional historical reconstruction runs through a separate CLI.
+
+Formal Firebase integration and production deployment are outside this contribution. The service in section 3 is not yet connected to the report UI. DECISIONS.md is unchanged.

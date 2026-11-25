@@ -46,3 +46,10 @@ We also listed candidate features to consider after the core pipeline works:
 **Outcome:** The schema and example data are in `slide-generator/schemas/`.  
 **Who:** Eddy, in discussion with all team members.  
 **Why:** To keep both pairs working from the same data format, so the Intent Supervisor's output can be used directly by the Slide Generator.
+
+## 2026-11-25 — Slide Generator local workflow
+
+**What:** Implemented a local workflow to load Project States, generate and manually edit reports, and produce presentations.
+**Outcome:** Local Mock storage simulates the Project State handoff. Reports follow the user's writing brief without changing State, and optional repository reading uses the selected State's commit. Confirmed reports become editable Slidev Markdown for web playback, PPTX and portable exports. Conversation revision and draft storage remain implemented but hidden in the website. Formal Firebase integration and deployment are deferred.
+**Who:** Ray.
+**Why:** To verify the complete workflow before cloud integration, keep evidence consistent with the selected project version, and prioritize a stable walking skeleton.

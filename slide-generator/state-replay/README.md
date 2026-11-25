@@ -1,68 +1,54 @@
-# Historical Project State reconstruction
+# Historical State reconstruction
 
-This is a local bootstrap/analysis tool for public repositories without Project State. It is **not Intent Supervisor**, does not write Firebase, and does not run Git commands or write GitHub resources. It uses the unchanged official Schema. Historical reconstruction is partial and needs human review.
+Optional CLI for public repos without Project State. Each accepted merge produces one complete State based on the previous State and that merge's code. Results are partial reconstructions requiring human review.
 
-## Install and plan
+[Website setup](../README.md) · [Schema](../schemas/README.md) · [Tests](../TESTING.md)
 
-Requires Node.js 22.12+. From this directory:
+## Plan, generate and resume
 
-```powershell
-npm.cmd ci
-node cli.js https://github.com/sindresorhus/p-limit --plan --base-branch master
+Install this package and configure `slide-generator/.env.local` as in the setup guide. From `state-replay` (replace the URL with a real public repository):
+
+```sh
+node cli.js https://github.com/owner/repo --plan
+node --env-file=../.env.local cli.js https://github.com/owner/repo --run --limit 3
 ```
 
-`--plan` is the default. It makes anonymous GitHub GET requests, collects all pages of closed PRs, excludes unmerged PRs, and sorts merged PRs by merge time (PR number breaks ties). It records the current default branch and any explicitly supplied historical base names. It **does not call an LLM**. The example includes `master` because that repository renamed its default branch. No repository-specific rules exist in the tool. Branches outside the declared scope appear under `excluded_bases`; they are not silently counted as default-branch merges. Confirm the scope before running analysis.
+- Plan uses read-only GitHub requests and no LLM; it freezes the branch head and ordered merge inventory.
+- Run processes up to 3 additional versions. Repeat the command to resume; accepted versions are not regenerated.
+- Normally each version uses selection and assessment calls, with at most one correction each.
+- `--base-branch <name>` includes a historical base name explicitly.
+- `--refresh` appends a new inventory after the frozen plan completes.
+- `--output <directory>` changes storage; configure the same `STATE_REPLAY_DIR` for the website.
+- `--unlock-stale` removes a crashed writer's lock only if its PID is no longer running.
 
-The plan is frozen with a default-branch head SHA, collection timestamp and complete PR inventory. Every processed merge must be an ancestor of that head. Rebase/squash-merged PRs are included when GitHub supplies their merged commit. GitHub metadata cannot establish every historical default-branch rename automatically; supply old names explicitly. A changed/force-pushed history may require manual investigation rather than automatic continuation.
+The standalone tool requires Node 22.12+; follow application requirements for the full website.
 
-## Generate and resume
+## Saved files
 
-Configure Gemini/Groq/OpenAI in the existing `slide-generator/.env.local` using the Report Agent instructions. Never commit that file. From `state-replay`:
+Ignored directory: `state-replay/.local-data/repo-<hash>/`.
 
-```powershell
-node --env-file=../.env.local cli.js https://github.com/sindresorhus/p-limit --run --limit 3
-```
+| File | Purpose |
+| --- | --- |
+| `states/` | Accepted immutable versions |
+| `latest.json` | Last successfully accepted State, not necessarily current repo HEAD |
+| `index.json` | Frozen inventory, hashes, progress and checkpoint |
+| `audit/` | Accepted input/evidence metadata |
+| `run.lock` | Single-writer protection |
 
-`--run` explicitly enables LLM calls. `--limit 3` means **up to three additional successful versions this invocation**, not only three PRs in the inventory. Run the same command again to resume. Already accepted versions are not regenerated. Increase to at most 100 only after checking model quality and API allowance. Normally each version uses one selection call and one State-analysis call; each can have one format correction (four model calls maximum per version). Provider HTTP retries are counted separately. No automatic provider/model changes occur.
+Failures preserve the checkpoint. Readers verify hashes and chain links. Do not edit accepted versions/index to repair a failed run.
 
-Each analysis receives the immediately previous complete State (null for the first), immutable merge message and changed-file patches, the selected commit's file inventory for selection, and only the verified selected file excerpts for analysis. It never receives later States or current mutable PR descriptions. The current repository at the merge is used, not just the patch. Limits match the report reader: four excerpts, 180 lines each, 24,000 characters total; the full repository is **not exhaustively analyzed**. Oversized/truncated inventories or evidence fail explicitly. Bounded excerpts can miss important behavior, so all three assessment sections retain data gaps.
+## Website
 
-The model returns assessments and a merge summary. The application supplies identity, dates, generator, references and chain metadata, then performs full Draft 2020-12 validation plus relationship/evidence checks. Current code alone is insufficient for newly `done` items: they also need this merged PR and a selected changed-file source. Prior IDs must remain stable; unverified/removed capabilities are retained as `unknown`, not silently dropped. Static risk observations require current evidence and unknown severity. Tests/versions are not evidence of passing CI or publication. These checks establish format and provenance, **not semantic proof of every claim**.
+Enter the same repo URL → **載入已重建的歷史 State**. This only reads saved results; it never starts a reconstruction job. Partial results show `X/Y`. Choose a version or inclusive range of at most 100 merges, then generate/manual-edit the report.
 
-## Saved data
+## Limits
 
-Default location: `state-replay/.local-data/repo-<repository-hash>/`, ignored by Git.
+- Only the previous State and selected merge's evidence are supplied; never future States.
+- Excerpts are bounded to 4 ranges, 180 lines each and 24,000 characters total.
+- Full schema/reference validation cannot prove every claim. Gaps remain explicit.
+- Collection time (`updated_at`) and historical merge time are separate.
+- Unmerged PRs/direct commits do not create separate States. Missing historical branch names need explicit input.
+- GitHub limits or model failures stop safely; downloaded code/tests are never executed.
+- No Git/GitHub writes or Firebase writes occur. This is optional bootstrap work, not the production State producer.
 
-- `states/`: one immutable accepted State per merge.
-- `latest.json`: the last successfully accepted State, not necessarily repository HEAD or a fully processed history.
-- `index.json`: authoritative checkpoint, frozen plan, original merge times, accepted-version hashes and completion status.
-- `audit/`: per-version immutable inputs, selected excerpts, operation metadata and collection time. No credentials or raw rejected responses.
-- `run.lock`: single-writer lock, released on ordinary success/failure.
-
-Version files are written before atomically replacing the checkpoint. `latest.json` is a recoverable convenience copy; after a crash between writes, the next invocation reconstructs it from the checkpoint. Readers verify version hashes and chain links. Failures do not advance the checkpoint. Ctrl+C requests cancellation. To remove a crashed process's lock, use `--unlock-stale`; the tool refuses while its PID is alive. Do not manually edit accepted versions/index to resume a corrupt history.
-
-`updated_at` records collection/analysis time, per the official Schema. Historical merge time remains in the index, UI labels and merge-range evidence; it is not falsely presented as the time the tool ran. Generator is `historical-project-state-replay`. No direct commits create their own State; code changes between PR merges can appear in a later snapshot but must not be attributed to that PR without evidence.
-
-After the frozen plan is complete, use `--refresh` to append a newly collected inventory. Repeat historical `--base-branch` options when refreshing. Accepted merge prefixes and branch scope must match; history is never rewritten silently. `--output <directory>` selects another output root; for the website to read that root, configure the same absolute `STATE_REPLAY_DIR` in its environment and restart Next.js. The default needs no extra setting. Keep custom output locations outside versioned source or explicitly ignore them.
-
-GitHub anonymous rate limits apply. A rate-limit/network/model failure stops with the last checkpoint intact. Wait for recovery and resume; no key/payment upgrade is required by this tool. It does not execute downloaded code or repository tests.
-
-## Use in the website
-
-Start the existing Next.js app, open `/reports`, enter the same public repo URL and click **載入已重建的歷史 State**. Partial results are labeled `X/Y` and can be tested before finishing the history. Choose an end snapshot, optionally select an inclusive start (maximum 100 merges), then generate/revise a report. The server reloads accepted State by replay ID/event/commit and validates the stored chain; client State edits do not replace that stored version. Enable repository reading for additional excerpts from exactly the selected end commit. The range supplies dated trigger records; it does not feed future code to old snapshots.
-
-**載入公開 repo** remains the separate current-code-only mode and does not automatically run reconstruction. The website never starts this long job. Production endpoints remain disabled pending authentication, persistence and hosting coordination.
-
-## Offline verification
-
-```powershell
-node --test
-```
-
-From `slide-generator`, with the existing Next server running:
-
-```powershell
-node report-agent/verify.mjs --browser
-```
-
-Tests use a small synthetic repo and mocked GitHub/model responses: chronology, first/previous State isolation, no-op planning, resume, failure preservation, locks, schema/ID/source checks, corrupt-chain rejection, latest recovery, inclusive history and actual Next/UI integration. No real LLM or API keys are needed. A public p-limit **plan-only** smoke test collected 21 merges over `main`/`master`; live model output still requires a small manual run and review.
+Run `node --test` here. The bundled Mock examples can test the website without this tool or external historical data.
