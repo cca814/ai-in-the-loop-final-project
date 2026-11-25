@@ -47,9 +47,16 @@ We also listed candidate features to consider after the core pipeline works:
 **Who:** Eddy, in discussion with all team members.  
 **Why:** To keep both pairs working from the same data format, so the Intent Supervisor's output can be used directly by the Slide Generator.
 
+## 2026-11-23 — Report and slides storage
+
+**What:** Decided how the web page saves `report.md` and `slides.md`.  
+**Outcome:** The user names a file in the web page and saves it. Both file types are stored in Firestore at `projects/{projectId}/reports/{reportId}`, with a `type` of `report` or `slides`. The server assigns the id on the first save, and later saves overwrite the same file, so only the latest content is kept. A file is not tied to a Project State snapshot. The API lists saved files by name and returns the content when one is opened. This replaces the per-snapshot draft in the mock storage and the saved report versions proposed earlier. The API is described in `slide-generator/API.md`.  
+**Who:** Eddy and Ray.  
+**Why:** A report can cover several Project State snapshots, so saving one draft per snapshot would not work. Earlier versions are not needed, so keeping only the latest content keeps the API simple.
+
 ## 2026-11-25 — Slide Generator local workflow
 
 **What:** Implemented a local workflow to load Project States, generate and manually edit reports, and produce presentations.
-**Outcome:** Local Mock storage simulates the Project State handoff. Reports follow the user's writing brief without changing State, and optional repository reading uses the selected State's commit. Confirmed reports become editable Slidev Markdown for web playback, PPTX and portable exports. Conversation revision and draft storage remain implemented but hidden in the website. Formal Firebase integration and deployment are deferred.
+**Outcome:** Local Mock storage simulates the Project State handoff. Reports follow the user's writing brief without changing State, and optional repository reading uses the selected State's commit. Confirmed reports become editable Slidev Markdown for web playback, PPTX and portable exports. Conversation revision and legacy Mock draft storage remain implemented but hidden in the website; the latter does not replace the named-file storage decision above. Formal Firebase integration and deployment are deferred.
 **Who:** Ray.
 **Why:** To verify the complete workflow before cloud integration, keep evidence consistent with the selected project version, and prioritize a stable walking skeleton.

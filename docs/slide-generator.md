@@ -13,7 +13,7 @@ The full workflow should let a user:
 - Select a project and view its latest Project State.
 - Ask the LLM to generate a report with slide content and a script for each slide.
 - Edit the report by hand or ask the LLM to revise it.
-- Save versions of the report and view earlier versions.
+- Save `report.md` and `slides.md` by name and open them again later.
 - Confirm a version and generate a presentation from it.
 - Download `report.md` and the presentation files.
 
@@ -66,9 +66,45 @@ The full input and output of each endpoint are in [`slide-generator/API.md`](../
 
 ## 4. Report Editing
 
+### 4.1 Saved Files
+
+The user names a `report.md` or `slides.md` in the web page and saves it. Both kinds are stored in `projects/{projectId}/reports/{reportId}`:
+
+| Field | Meaning |
+| --- | --- |
+| `name` | The name entered by the user |
+| `type` | `report` or `slides` |
+| `content` | The Markdown text |
+| `created_at`, `updated_at` | Set by the server |
+
+Key decisions:
+
+- **The server assigns the id.** The first save creates the file and returns a Firestore auto ID. Later saves of the same file use that id.
+- **Only the latest content is kept.** Each save overwrites the file. Earlier content cannot be read back, and if two tabs save the same file, the last save wins.
+- **The type is fixed.** A save whose `type` differs from the stored one is rejected, so a `slides.md` cannot overwrite a `report.md`.
+- **Files are not tied to a snapshot.** A report can cover several Project State snapshots, so the file does not record which ones it was written from.
+- **The list has no content.** The list returns names only, and the content is read when one file is opened.
+
+### 4.2 API
+
+The full input and output are in [`slide-generator/API.md`](../slide-generator/API.md#reports-and-slides).
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/projects/{projectId}/reports` | Save a new file and get its id |
+| `GET` | `/api/projects/{projectId}/reports` | List saved files by name |
+| `GET` | `/api/projects/{projectId}/reports/{reportId}` | Open one file |
+| `PUT` | `/api/projects/{projectId}/reports/{reportId}` | Overwrite a saved file |
+
+These endpoints have no authentication, so anyone who knows the URL can read or overwrite a saved file.
+
+### 4.3 Local Report Workspace
+
 The local `/reports` page supports manual Markdown editing, rendered/split preview, synchronized scrolling, undo/redo and downloads. Checks run automatically; each page needs a title and speaker notes. Sources is optional.
 
 Report/slide edits remain in page memory: download before refresh. Conversation editing and draft save/load remain implemented but are hidden in the website.
+
+The saved-file API above is not yet connected to this workspace; the retained Mock draft API is legacy test support.
 
 ## 5. LLM Report Generation
 
@@ -86,4 +122,4 @@ Unsupported executable syntax is rejected. PPTX and overflow checks need Chromiu
 
 Follow [setup](../slide-generator/README.md) and [tests](../slide-generator/TESTING.md). The report website currently uses local Mock States. Optional historical reconstruction runs through a separate CLI.
 
-Formal Firebase integration and production deployment are outside this contribution. The service in section 3 is not yet connected to the report UI. DECISIONS.md is unchanged.
+Formal Firebase integration and production deployment are outside this contribution. The State and saved-file APIs in sections 3 and 4 are not yet connected to the report UI.
