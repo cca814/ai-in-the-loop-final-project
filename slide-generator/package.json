@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:api": "node --env-file=.env.local scripts/api-test.mjs"
   },
   "dependencies": {
     "ajv": "^8.20.0",
