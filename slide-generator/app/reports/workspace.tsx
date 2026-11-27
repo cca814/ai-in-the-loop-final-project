@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { FormEvent } from 'react';
+import MarkdownEditor from './markdown-editor';
 import { parseRecentProjects, readRecentProjects, rememberProject, subscribeRecentProjects } from './recent-projects';
 import { WorkspaceActionError } from './workspace-types';
 import type { ExportKind, WorkspaceActions, WorkspaceErrorCode, WorkspaceState } from './workspace-types';
@@ -38,9 +39,6 @@ export default function ReportWorkspace({ actions = {} }: { actions?: WorkspaceA
   const [includeRange, setIncludeRange] = useState(false);
   const [brief, setBrief] = useState(defaultBrief);
   const [draft, setDraft] = useState<Draft>({ markdown: '', source: null });
-  const [undo, setUndo] = useState<Draft[]>([]);
-  const [redo, setRedo] = useState<Draft[]>([]);
-  const manualCheckpoint = useRef(false);
   const [slides, setSlides] = useState<Slides | null>(null);
   const [confirmed, setConfirmed] = useState<string | null>(null);
   const [automaticEffects, setAutomaticEffects] = useState(true);
@@ -102,11 +100,8 @@ export default function ReportWorkspace({ actions = {} }: { actions?: WorkspaceA
       setStart(0);
       setIncludeRange(false);
       setDraft({ markdown: '', source: null });
-      setUndo([]);
-      setRedo([]);
       setSlides(null);
       setConfirmed(null);
-      manualCheckpoint.current = false;
       rememberProject(id);
       setNotice(`Loaded ${ordered.length} State versions.`);
     });
@@ -126,39 +121,16 @@ export default function ReportWorkspace({ actions = {} }: { actions?: WorkspaceA
     void run('Generate report', async () => {
       const result = await generate({ states: selectedStates, brief });
       if (!result.trim()) throw new WorkspaceActionError('empty_report');
-      setUndo(previous => [...previous, draft].slice(-20));
-      setRedo([]);
       setDraft({ markdown: result, source });
       setConfirmed(null);
-      manualCheckpoint.current = false;
       setNotice('Report generated. Please review its content.');
     });
   }
 
   function editReport(value: string) {
     if (value === report) return;
-    if (!manualCheckpoint.current) {
-      setUndo(previous => [...previous, draft].slice(-20));
-      manualCheckpoint.current = true;
-    }
-    setRedo([]);
     setDraft({ ...draft, markdown: value });
     setConfirmed(null);
-  }
-
-  function restore(direction: 'undo' | 'redo') {
-    const source = direction === 'undo' ? undo : redo;
-    if (!source.length) return;
-    if (direction === 'undo') {
-      setUndo(source.slice(0, -1));
-      setRedo(previous => [...previous, draft].slice(-20));
-    } else {
-      setRedo(source.slice(0, -1));
-      setUndo(previous => [...previous, draft].slice(-20));
-    }
-    setDraft(source[source.length - 1]);
-    setConfirmed(null);
-    manualCheckpoint.current = false;
   }
 
   function handleGenerateSlides() {
@@ -258,14 +230,7 @@ export default function ReportWorkspace({ actions = {} }: { actions?: WorkspaceA
           {sourceMismatch && <p className="reports-stale" role="status">
             This report was generated from a different State selection. Your edits are kept. Restore that selection or regenerate before creating a presentation.
           </p>}
-          <label className="reports-label" htmlFor="report-markdown">Edit Markdown</label>
-          <textarea id="report-markdown" className="reports-editor" value={report} disabled={!!pending}
-            onChange={event => editReport(event.target.value)} onBlur={() => { manualCheckpoint.current = false; }}
-            placeholder="Generate a report or paste Markdown here to edit it." spellCheck={false} />
-          <div className="reports-exportActions">
-            <button className="reports-secondary" disabled={!!pending || !undo.length} onClick={() => restore('undo')}>Undo</button>
-            <button className="reports-secondary" disabled={!!pending || !redo.length} onClick={() => restore('redo')}>Redo</button>
-          </div>
+          <MarkdownEditor value={report} onChange={editReport} disabled={!!pending} />
         </section>
       </div>
       <section className="reports-card reports-slidesSection" aria-labelledby="slides-title">

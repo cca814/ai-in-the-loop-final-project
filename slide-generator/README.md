@@ -10,11 +10,11 @@ npm run dev
 
 Windows: use `npm.cmd` if PowerShell blocks `npm.ps1`. Open **http://localhost:3000/reports** (or the printed port).
 
-- Edit reports as plain-text Markdown with undo/redo.
+- Edit reports in Edit / Preview / Split modes, with proportional scroll synchronization.
 - Edit and download `report.md`; generated `slides.md` is read-only and downloadable. Refreshing clears edits.
 - State loading, LLM generation and presentation exports are disabled until the backend integration PR. This frontend needs no API key or Mock Firebase.
 
-After integration, successful project loads are remembered in the browser (up to 10 IDs). Reports keep up to 20 undo checkpoints in page memory. Public repo loading and repo reading are not exposed.
+After integration, successful project loads are remembered in the browser (up to 10 IDs). Public repo loading and repo reading are not exposed.
 
 ## Frontend integration
 
@@ -22,7 +22,7 @@ After integration, successful project loads are remembered in the browser (up to
 
 Known failures reject with `WorkspaceActionError` and a defined code; the UI supplies its message. Other errors show a generic message, never the raw error text.
 
-Generation replaces content only after success. Reports retain their generated State/range source through manual edits and undo/redo. Selecting another source warns without discarding edits and blocks presentation creation until the selection matches or the report is regenerated. Report or effects changes make previous slides stale. Unconnected settings and actions are disabled.
+Generation replaces content only after success. Reports retain their generated State/range source through manual edits. Selecting another source warns without discarding edits and blocks presentation creation until the selection matches or the report is regenerated. Report or effects changes make previous slides stale. Unconnected settings and actions are disabled.
 
 ## Check
 
@@ -33,7 +33,9 @@ node node_modules/typescript/bin/tsc --noEmit --incremental false
 node node_modules/eslint/bin/eslint.js app/reports
 ```
 
-In `/reports`, check editing, undo/redo, exact Markdown downloads and mobile layout. Slides must be read-only; editing a confirmed report must clear confirmation. Unconnected actions remain disabled. No browser-testing dependency is required. These checks do not verify backend integration.
+In `/reports`, check editing, exact Markdown downloads and mobile layout. Slides must be read-only; editing a confirmed report must clear confirmation. Unconnected actions remain disabled. No browser-testing dependency is required. These checks do not verify backend integration.
+
+Check Preview with headings, tables and task lists; raw HTML is not rendered. In Split, scrolling either pane synchronizes the other by scroll percentage. Preview height is capped at 560px (420px on mobile); mobile Split stacks the panes. Mode changes must preserve report text.
 
 Project IDs accept 2–63 lowercase letters, digits or hyphens, beginning with a letter or digit. Verified valid: `ab`, `demo-app`, `project-01`. Verified invalid: empty, `a`, `INVALID/ID`, `bad_id`, `-ab`, spaces and 64 characters.
 
@@ -42,7 +44,7 @@ Callback checks passed with a temporary fixture adapter. Repeat these checks aft
 | Operation | Expected result |
 | --- | --- |
 | Generate from B, edit, select A | Preserve edits, warn about source, block slides; selecting B clears the warning. |
-| Generate from inclusive range A–B; undo/redo | Receive both States in order; restore report text and source together. |
+| Generate from inclusive range A–B | Receive both States in order; record that range as the report source. |
 | Reject load/generation, or return empty output | Keep existing content; unknown error details stay hidden. |
 | Generate slides, toggle effects | Block export until regenerated; export the new source. |
 | Submit twice while the first call is pending | Start only one operation. |
