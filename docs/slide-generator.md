@@ -4,7 +4,7 @@
 
 The Slide Generator turns a project's current state into a progress report that a person can review, edit and present. It reads Project State snapshots submitted by the Intent Supervisor, helps the user write `report.md` with an LLM, and converts a confirmed report into a Slidev presentation.
 
-The architecture was recorded in the [Decisions Log](../DECISIONS.md) on 2026-11-11, and the Project State schema on 2026-11-18. This document records what has been implemented so far and what remains to be designed. 
+The architecture was recorded in the [Decisions Log](../DECISIONS.md) on 2026-11-11, the Project State schema on 2026-11-18, and its change to Markdown content on 2026-11-24. This document records what has been implemented so far and what remains to be designed.
 
 ## 2. Goals and Scope
 
@@ -27,10 +27,10 @@ The format is defined in [`schemas/project_state.schema.json`](../slide-generato
 
 Key decisions:
 
-- **Complete snapshots.** Each merged PR produces one snapshot containing the full state of the project, not only the changes from that PR.
-- **`trigger` instead of a list of recent changes.** Each snapshot records the merged PR that produced it. To describe what changed in a period, the Slide Generator lists the triggers of all snapshots in that period.
-- **Merged PRs only.** Open PRs are not listed, and a feature or milestone can be `done` only if it cites a merged PR.
-- **Missing data is explicit.** `data_gaps` marks sections that were not assessed. An empty `risks` array without a data gap means that no risks were found.
+- **Script fields plus Markdown.** The JSON keeps only the fields that the workflow script can fill, such as `event_id`, `base_state_id` and the merged PR. The project's state is sent as Markdown in `content`, and the server stores it without checking its structure.
+- **Complete snapshots.** Each merged PR produces one snapshot whose `content` describes the whole project, not only the changes from that PR.
+- **`pull_request` instead of a list of recent changes.** Each snapshot records the merged PR that produced it. To describe what changed in a period, the Slide Generator lists the PRs of all snapshots in that period.
+- **Merged PRs only.** A snapshot is produced only when a PR is merged, and `pull_request.merged_at` records when.
 
 ### 3.2 Submission Rules
 
@@ -38,18 +38,12 @@ Key decisions:
 | --- | --- |
 | Authentication | `Authorization: Bearer <INGEST_TOKEN>`; otherwise `401` |
 | Size limit | 800 KB; otherwise `413` |
-| Validation | JSON Schema with ajv, then five rules that the schema cannot express; otherwise `400` with every problem listed |
+| Validation | JSON Schema with ajv, then `project_id` must equal `{projectId}` in the URL; otherwise `400` with every problem listed |
 | Idempotency | `event_id` (`gh-run-<github.run_id>`) is the document ID; a repeated `event_id` returns `200` without writing |
 | Ordering | `base_state_id` must equal the project's current state; otherwise `409` |
 | Atomicity | The duplicate check, the base check and the write run in one Firestore transaction |
 
-The five rules are in [`lib/project-state.ts`](../slide-generator/lib/project-state.ts):
-
-1. `project_id` in the body equals `{projectId}` in the URL.
-2. Ids are unique within each array.
-3. Every referenced id exists in the snapshot.
-4. A `done` feature or milestone cites a pull request.
-5. The trigger is a pull request.
+The validation is in [`lib/project-state.ts`](../slide-generator/lib/project-state.ts).
 
 ### 3.3 API
 
@@ -60,7 +54,7 @@ The full input and output of each endpoint are in [`slide-generator/API.md`](../
 | `POST` | `/api/projects/{projectId}/states` | Store a snapshot from GitHub Actions |
 | `GET` | `/api/projects` | List projects |
 | `GET` | `/api/projects/{projectId}/state` | Get the current snapshot |
-| `GET` | `/api/projects/{projectId}/states` | List snapshot triggers, optionally within `from` and `to` |
+| `GET` | `/api/projects/{projectId}/states` | List the merged PR of each snapshot, optionally within `from` and `to` |
 | `GET` | `/api/projects/{projectId}/states/{eventId}` | Get one snapshot |
 | `GET` | `/api/health` | Check the Firestore connection |
 

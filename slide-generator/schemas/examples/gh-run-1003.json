@@ -1,0 +1,24 @@
+{
+  "event_id": "gh-run-1003",
+  "project_id": "demo-app",
+  "project_name": "Demo App",
+  "repository": {
+    "full_name": "example-org/demo-app",
+    "url": "https://github.com/example-org/demo-app"
+  },
+  "source_commit_sha": "9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b",
+  "base_state_id": "gh-run-1002",
+  "updated_at": "2026-11-17T18:00:00+08:00",
+  "pull_request": {
+    "number": 42,
+    "title": "Save report versions",
+    "url": "https://github.com/example-org/demo-app/pull/42",
+    "merged_at": "2026-11-17T09:55:03Z"
+  },
+  "generator": {
+    "name": "intent-supervisor",
+    "version": "0.3.0",
+    "model": "gemini-2.5-flash"
+  },
+  "content": "# Demo App\n\n## Milestones\n\n- MVP: in progress\n\n## Features\n\n- Email login: done ([PR #40](https://github.com/example-org/demo-app/pull/40))\n- Report editor: done ([PR #41](https://github.com/example-org/demo-app/pull/41), [PR #42](https://github.com/example-org/demo-app/pull/42))\n\n## Risks\n\n- Slide export needs Chromium, which the hosting plan does not include yet.\n"
+}

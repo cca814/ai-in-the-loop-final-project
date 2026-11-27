@@ -1,0 +1,24 @@
+{
+  "event_id": "gh-run-1002",
+  "project_id": "demo-app",
+  "project_name": "Demo App",
+  "repository": {
+    "full_name": "example-org/demo-app",
+    "url": "https://github.com/example-org/demo-app"
+  },
+  "source_commit_sha": "3f2a9c1d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+  "base_state_id": "gh-run-1001",
+  "updated_at": "2026-11-15T10:35:00+08:00",
+  "pull_request": {
+    "number": 41,
+    "title": "Add Markdown preview",
+    "url": "https://github.com/example-org/demo-app/pull/41",
+    "merged_at": "2026-11-15T02:30:12Z"
+  },
+  "generator": {
+    "name": "intent-supervisor",
+    "version": "0.3.0",
+    "model": "gemini-2.5-flash"
+  },
+  "content": "# Demo App\n\n## Milestones\n\n- MVP: in progress\n\n## Features\n\n- Email login: done ([PR #40](https://github.com/example-org/demo-app/pull/40))\n- Report editor: in progress. Markdown preview is merged ([PR #41](https://github.com/example-org/demo-app/pull/41)); saving versions is left.\n\n## Risks\n\n- Slide export needs Chromium, which the hosting plan does not include yet.\n"
+}

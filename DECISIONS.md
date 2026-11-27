@@ -54,6 +54,13 @@ We also listed candidate features to consider after the core pipeline works:
 **Who:** Eddy and Ray.  
 **Why:** A report can cover several Project State snapshots, so saving one draft per snapshot would not work. Earlier versions are not needed, so keeping only the latest content keeps the API simple.
 
+## 2026-11-24 — Project State content as Markdown
+
+**What:** Simplified the Project State schema.  
+**Outcome:** The JSON keeps only the fields that the workflow script can fill: `event_id`, `project_id`, `project_name`, `repository`, `source_commit_sha`, `base_state_id`, `updated_at` and the merged `pull_request`. The rest of the state is sent as Markdown in `content`, and the Slide Generator stores it without checking its structure. This replaces `milestones`, `features`, `risks`, `trigger`, `source_refs` and `data_gaps` from the 2026-11-18 schema. The schema and examples are in `slide-generator/schemas/`.  
+**Who:** All team members.  
+**Why:** The reason why we change the schema is because use markdown to document what PR do can have more flexible content and more detail in code base, so that AI can organize documents for complete PR content.
+
 ## 2026-11-26 — Code steward: Eddy
 
 **What:** Eddy takes over the code steward role from Aron for review PR #25.

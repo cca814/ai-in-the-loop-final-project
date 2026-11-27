@@ -8,8 +8,6 @@ const MAX_BYTES = 800 * 1024;
 const DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 const MAX_SNAPSHOTS = 200;
 
-type SourceRef = { id: string };
-
 function parseDateTime(value: string | null): Date | null {
   if (!value || !DATE_TIME.test(value)) return null;
   const date = new Date(value);
@@ -127,25 +125,17 @@ export async function GET(
 
   const snapshot = await query
     .orderBy("updated_at_ts", "asc")
-    .select("event_id", "updated_at", "source_commit_sha", "trigger", "source_refs")
+    .select("event_id", "updated_at", "source_commit_sha", "pull_request")    
     .limit(MAX_SNAPSHOTS + 1)
     .get();
 
   const docs = snapshot.docs.slice(0, MAX_SNAPSHOTS);
-  const snapshots = docs.map((doc) => {
-    const trigger = doc.get("trigger");
-    const sourceRefs: SourceRef[] = doc.get("source_refs") ?? [];
-    return {
-      event_id: doc.get("event_id"),
-      updated_at: doc.get("updated_at"),
-      source_commit_sha: doc.get("source_commit_sha"),
-      trigger: {
-        summary: trigger.summary,
-        feature_ids: trigger.feature_ids ?? [],
-        source_ref: sourceRefs.find((ref) => ref.id === trigger.source_ref_id) ?? null,
-      },
-    };
-  });
+  const snapshots = docs.map((doc) => ({
+    event_id: doc.get("event_id"),
+    updated_at: doc.get("updated_at"),
+    source_commit_sha: doc.get("source_commit_sha"),
+    pull_request: doc.get("pull_request"),
+  }));
 
   return Response.json({
     project_id: projectId,
