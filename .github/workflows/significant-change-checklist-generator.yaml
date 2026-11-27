@@ -17,6 +17,8 @@ concurrency:
 
 jobs:
   first_stage:
+    outputs:
+      checklist-sha: ${{ steps.main.outputs.sha }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
 
@@ -92,3 +94,14 @@ jobs:
           name: significant-change-checklist-${{ steps.main.outputs.sha }}
           path: checklists/${{ steps.main.outputs.sha }}.md
           if-no-files-found: error
+
+  detect_significant_changes:
+    needs: first_stage
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    uses: ./.github/workflows/significant-change-detector.yaml
+    with:
+      checklist-sha: ${{ needs.first_stage.outputs.checklist-sha }}
+    secrets: inherit
