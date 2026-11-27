@@ -36,7 +36,7 @@ Take turns: each person writes their own sentence **alone for 2 minutes**, then 
 
 | | Sentence |
 |---|---|
-| Person A | |
+| Person A | Our tool helps managers and engineers to report what they do by use GItHub action to store project state and use Slidev to generate the slide. |
 | Person B | |
 | Person C | |
 | Person D | |
@@ -46,7 +46,7 @@ Take turns: each person writes their own sentence **alone for 2 minutes**, then 
 
 If they did not match, that is a useful finding. Write down the difference you had to settle:
 
-> 
+>All agree.
 
 ---
 
@@ -55,12 +55,12 @@ If they did not match, that is a useful finding. Write down the difference you h
 **1. Draw the path (3 min).** On a whiteboard, paper or shared screen, draw the shortest path from **what the user gives the tool** to **what the tool gives back**. Three to five boxes is plenty.
 
 ```
-[User input] -> [ ... ] -> [ ... ] -> [Output the user sees]
+[合併的 PR] → [Intent Supervisor 產生 Project State] → [POST /states 存進 Firestore] → [報告頁讀取 state，LLM 寫出 report.md] → [slides.md 和 Slidev 簡報]
 ```
 
 **2. Check where you are.** *Can we do our main task from start to finish today, on one machine, without faking anything?*
 
-☐ **No (Route 1).** Decide the smallest piece of this path that would count as "it runs" (one example going through). Cut everything else. Today you build that.
+✓ **No (Route 1).** Decide the smallest piece of this path that would count as "it runs" (one example going through). Cut everything else. Today you build that.
 
 ☐ **Yes (Route 2).** Your skeleton already walks. First **trace it (about 5 min):** for each box, someone **who did not write it** opens the code and explains it in a minute. Mark any box only its author could explain, and anything still hard-coded or faked. Then choose **the next thin slice** to build today, the first of these that applies:
 1. something on the path that is still **faked or hard-coded**
@@ -69,7 +69,7 @@ If they did not match, that is a useful finding. Write down the difference you h
 
 **Our goal for today** (one example, going in as ____, coming out as ____; or, Route 2: the slice we chose):
 
-> 
+>> One example, going in as the snapshot `gh-run-1001.json` submitted to `POST /api/projects/demo-app/states`, coming out as a `report.md` shown on the report page, generated from the state read back from Firestore. The Intent Supervisor's Markdown `content` is faked with a fixed text.
 
 **3. Split the building (with the hand-offs agreed).** Give each person, or each pair, **one building task**: usually one box, or one connection between boxes. Before anyone starts, agree **what each piece receives and returns** (for example "the model step receives the ticket text and returns `{category, summary}`"). This is what lets the pieces connect in Part 3.
 
@@ -86,7 +86,7 @@ If they did not match, that is a useful finding. Write down the difference you h
 
 **Things we are leaving out on purpose today:**
 
-> 
+>A real Intent Supervisor run: the Markdown `content` is a fixed text.
 
 ---
 
