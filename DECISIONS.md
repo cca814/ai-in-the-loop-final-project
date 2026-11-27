@@ -53,3 +53,10 @@ We also listed candidate features to consider after the core pipeline works:
 **Outcome:** The user names a file in the web page and saves it. Both file types are stored in Firestore at `projects/{projectId}/reports/{reportId}`, with a `type` of `report` or `slides`. The server assigns the id on the first save, and later saves overwrite the same file, so only the latest content is kept. A file is not tied to a Project State snapshot. The API lists saved files by name and returns the content when one is opened. This replaces the per-snapshot draft in the mock storage and the saved report versions proposed earlier. The API is described in `slide-generator/API.md`.  
 **Who:** Eddy and Ray.  
 **Why:** A report can cover several Project State snapshots, so saving one draft per snapshot would not work. Earlier versions are not needed, so keeping only the latest content keeps the API simple.
+
+## 2026-11-26 — Code steward: Eddy
+
+**What:** Eddy takes over the code steward role from Aron for review PR #25.
+**Outcome:** Eddy reviews the open pull requests to `main` and leaves at least one real comment before approving each. On #25, Eddy asked whether the next PR will replace the mock data and mock API with the real API and Firestore, and how the report agent should read the Project State after #19 replaces the structured fields with a Markdown `content` field. The role then passes to the steward for the walking skeleton session.  
+**Who:** All team members.  
+**Why:** Every member serves as code steward at least once.
