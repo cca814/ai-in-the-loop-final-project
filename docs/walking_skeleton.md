@@ -36,17 +36,17 @@ Take turns: each person writes their own sentence **alone for 2 minutes**, then 
 
 | | Sentence |
 |---|---|
-| Person A | Our tool helps managers and engineers to report what they do by use GItHub action to store project state and use Slidev to generate the slide. |
-| Person B | This tool helps the team understand code changes and also provides an efficient way to generate status slides for team collaboration. |
-| Person C | Our tool helps development teams eliminate communication costs by using AI to aggregate project progress. |
-| Person D | Our tool helps development teams to improve communication by analyzing code changes and generate reports.|
-| **Agreed sentence** | |
+| Eddy | Our tool helps managers and engineers to report what they do by use GItHub action to store project state and use Slidev to generate the slide. |
+| Brian | This tool helps the team understand code changes and also provides an efficient way to generate status slides for team collaboration. |
+| Aron | Our tool helps development teams eliminate communication costs by using AI to aggregate project progress. |
+| Ray | Our tool helps development teams to improve communication by analyzing code changes and generate reports.|
+| **Agreed sentence** | Our tool helps development teams, both engineers and managers, to follow project progress without manual status reporting by using AI to analyze merged code changes and turn them into reports and slides they can edit. |
 
-**Did all four sentences match?** ☐ Yes ☐ Mostly ☐ No
+**Did all four sentences match?** ☐ Yes ✓ Mostly ☐ No
 
 If they did not match, that is a useful finding. Write down the difference you had to settle:
 
->All agree.
+>The sentences agreed on the outcome (reports and slides about project progress) but differed in focus: Eddy described the mechanism (GitHub Actions and Slidev), Brian the goal of cutting communication costs, and Aron and Ray understanding code changes. We kept the outcome and the users from all four, described the method in plain words, and left the tool names for the path in Part 2.
 
 ---
 
@@ -114,7 +114,6 @@ If they did not match, that is a useful finding. Write down the difference you h
 
 > - The Project State was submitted by hand with `curl` and `schemas/examples/gh-run-1001.json`, instead of by the Intent Supervisor after a merge.
 > - The Markdown `content` in that snapshot is a fixed example text, not generated from the repository.
-> - The reviewer is a fixed GitHub user set in the `SIGNIFICANT_CHANGE_REVIEWER` repository variable.
 
 ---
 
@@ -129,14 +128,14 @@ If your team is changing stewards, the incoming steward approves this one as the
 
 | | |
 |---|---|
-| Link to the merged PR | |
-| Steward who reviewed | |
-| Steward's comment (copy it here) | |
-| How the author answered | |
+| Link to the merged PR | https://github.com/cca814/ai-in-the-loop-final-project/pull/27 |
+| Steward who reviewed | Brian |
+| Steward's comment (copy it here) | Why don't we standardize on UTC (Z) for the API timestamps instead of +08:00? Using Z avoids the + URL-encoding issue (%2B) in query strings and keeps the backend handling simpler. |
+| How the author answered | Author thinks this used method is user friendly. |
 
 **Add one line to `DECISIONS.md`** about the biggest choice you made today (for example, what you cut, what you faked, or a hand-off format you agreed):
 
-> 
+> Kept the Project State submission manual and left out report generation, so that each part had one example running today. See DECISIONS.md, 2026-11-28.
 
 ---
 
@@ -146,23 +145,23 @@ Answer these together, honestly. Nobody is graded on how good the answers sound.
 
 1. **What worked well in how we worked together today?**
 
-   > 
+   > Splitting into two pairs let both slices move at the same time, and explaining each other's code before connecting caught a wrong branch name.
 
 2. **What was hard or awkward?** (for example: one person doing most of the typing, long silences, disagreeing about direction, tool problems)
 
-   > 
+   > Everyone need to commit in one file is awkward.
 
 3. **Who had the least chance to contribute, and what would help next time?** (Route 2: was there a box only one person could explain? What will we do about it?)
 
-   > 
+   > In each pair one person typed most of the time. Next time we will switch the typist halfway through.
 
 4. **What is the one thing we will do differently in the next team session** (merge day)?
 
-   > 
+   > Split big PR into small PRs.
 
 5. **Blockers we found** (technical or otherwise) and who will follow up:
 
-   > 
+   > Everyone doesn't write enough documents in repo.
 
 ---
 
