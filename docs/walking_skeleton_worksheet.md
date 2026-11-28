@@ -39,7 +39,7 @@ Take turns: each person writes their own sentence **alone for 2 minutes**, then 
 | Person A | Our tool helps managers and engineers to report what they do by use GItHub action to store project state and use Slidev to generate the slide. |
 | Person B | This tool helps the team understand code changes and also provides an efficient way to generate status slides for team collaboration. |
 | Person C | Our tool helps development teams eliminate communication costs by using AI to aggregate project progress. |
-| Person D | |
+| Person D | Our tool helps development teams to improve communication by analyzing code changes and generate reports.|
 | **Agreed sentence** | |
 
 **Did all four sentences match?** ☐ Yes ☐ Mostly ☐ No
