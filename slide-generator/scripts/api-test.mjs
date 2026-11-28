@@ -7,7 +7,9 @@
 //   BASE_URL=https://slide-generator-delta.vercel.app npm run test:api
 //
 // Each run uses a new project, api-test-<time>, and deletes it from Firestore at the end.
+// The snapshots are the examples in schemas/examples, moved to that project.
 
+import { readFileSync } from "node:fs";
 import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { cert, initializeApp } from "firebase-admin/app";
@@ -18,26 +20,11 @@ const PROJECT = `api-test-${Date.now()}`;
 const PROJECT_URL = `${BASE_URL}/api/projects/${PROJECT}`;
 const AUTH = { authorization: `Bearer ${process.env.INGEST_TOKEN}` };
 
-// Snapshot n (1001, 1002, ...) as the Intent Supervisor would submit it.
-function snapshot(n, base) {
-  const day = n - 1000; // 1001 -> Nov 11, 1002 -> Nov 12, ...
-  const pr = n - 960;
-  return {
-    event_id: `gh-run-${n}`,
-    project_id: PROJECT,
-    project_name: "API Test",
-    repository: { full_name: "example-org/api-test", url: "https://github.com/example-org/api-test" },
-    source_commit_sha: String(n).padStart(40, "0"),
-    base_state_id: base,
-    updated_at: `2026-11-${10 + day}T10:00:00+08:00`,
-    pull_request: {
-      number: pr,
-      title: `Test PR ${pr}`,
-      url: `https://github.com/example-org/api-test/pull/${pr}`,
-      merged_at: `2026-11-${10 + day}T01:55:00Z`,
-    },
-    content: `# API Test\n\nState after PR #${pr}.\n`,
-  };
+// An example snapshot (gh-run-1001, gh-run-1002 or gh-run-1003) with this run's project_id.
+// gh-run-1001 is the first snapshot; each later one is built on the one before it.
+function example(eventId) {
+  const file = new URL(`../schemas/examples/${eventId}.json`, import.meta.url);
+  return { ...JSON.parse(readFileSync(file, "utf8")), project_id: PROJECT };
 }
 
 async function call(method, path, body, headers = {}) {
@@ -80,30 +67,31 @@ test("the server can reach Firestore", async () => {
 });
 
 test("a snapshot without the token is rejected with 401", async () => {
-  const { status } = await call("POST", "/states", snapshot(1001, null));
+  const { status } = await call("POST", "/states", example("gh-run-1001"));
   assert.equal(status, 401);
 });
 
 test("the first snapshot is stored with 201", async () => {
-  const { status, body } = await call("POST", "/states", snapshot(1001, null), AUTH);
+  const { status, body } = await call("POST", "/states", example("gh-run-1001"), AUTH);
   assert.equal(status, 201);
   assert.equal(body.state_id, "gh-run-1001");
 });
 
 test("a repeated event_id returns 200 and is not stored twice", async () => {
-  const { status, body } = await call("POST", "/states", snapshot(1001, null), AUTH);
+  const { status, body } = await call("POST", "/states", example("gh-run-1001"), AUTH);
   assert.equal(status, 200);
   assert.equal(body.duplicate, true);
 });
 
 test("a snapshot built on an old base is rejected with 409", async () => {
-  const { status, body } = await call("POST", "/states", snapshot(1003, "gh-run-1002"), AUTH);
+  // gh-run-1003 is built on gh-run-1002, but the current state is still gh-run-1001.
+  const { status, body } = await call("POST", "/states", example("gh-run-1003"), AUTH);
   assert.equal(status, 409);
   assert.equal(body.current_state_id, "gh-run-1001");
 });
 
 test("a snapshot that breaks the schema is rejected with 400", async () => {
-  const bad = { ...snapshot(1002, "gh-run-1001"), content: "" };
+  const bad = { ...example("gh-run-1002"), content: "" };
   const { status, body } = await call("POST", "/states", bad, AUTH);
   assert.equal(status, 400);
   assert.equal(body.error, "invalid_project_state");
@@ -111,14 +99,14 @@ test("a snapshot that breaks the schema is rejected with 400", async () => {
 });
 
 test("a project_id that differs from the URL is rejected with 400", async () => {
-  const bad = { ...snapshot(1002, "gh-run-1001"), project_id: "another-project" };
+  const bad = { ...example("gh-run-1002"), project_id: "another-project" };
   const { status } = await call("POST", "/states", bad, AUTH);
   assert.equal(status, 400);
 });
 
 test("later snapshots are stored in order", async () => {
-  assert.equal((await call("POST", "/states", snapshot(1002, "gh-run-1001"), AUTH)).status, 201);
-  assert.equal((await call("POST", "/states", snapshot(1003, "gh-run-1002"), AUTH)).status, 201);
+  assert.equal((await call("POST", "/states", example("gh-run-1002"), AUTH)).status, 201);
+  assert.equal((await call("POST", "/states", example("gh-run-1003"), AUTH)).status, 201);
 });
 
 test("the list returns every snapshot's PR, oldest first", async () => {
@@ -128,13 +116,14 @@ test("the list returns every snapshot's PR, oldest first", async () => {
     body.snapshots.map((s) => s.event_id),
     ["gh-run-1001", "gh-run-1002", "gh-run-1003"],
   );
-  assert.equal(body.snapshots[0].pull_request.number, 41);
+  assert.deepEqual(body.snapshots[0].pull_request, example("gh-run-1001").pull_request);
 });
 
 test("the list can be limited to a period", async () => {
+  // Only gh-run-1002 (updated_at 2026-11-15) falls between the other two examples.
   const period = new URLSearchParams({
-    from: "2026-11-12T00:00:00+08:00",
-    to: "2026-11-13T00:00:00+08:00",
+    from: "2026-11-14T00:00:00+08:00",
+    to: "2026-11-16T00:00:00+08:00",
   });
   const { status, body } = await call("GET", `/states?${period}`);
   assert.equal(status, 200);
@@ -145,7 +134,8 @@ test("the current state is the latest snapshot, with its Markdown", async () => 
   const { status, body } = await call("GET", "/state");
   assert.equal(status, 200);
   assert.equal(body.event_id, "gh-run-1003");
-  assert.match(body.content, /PR #43/);
+  assert.equal(body.updated_at, example("gh-run-1003").updated_at);
+  assert.equal(body.content, example("gh-run-1003").content);
 });
 
 test("one snapshot can be read by its event_id", async () => {
