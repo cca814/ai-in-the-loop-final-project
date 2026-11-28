@@ -67,3 +67,9 @@ We also listed candidate features to consider after the core pipeline works:
 **Outcome:** Eddy reviews the open pull requests to `main` and leaves at least one real comment before approving each. On #25, Eddy asked whether the next PR will replace the mock data and mock API with the real API and Firestore, and how the report agent should read the Project State after #19 replaces the structured fields with a Markdown `content` field. The role then passes to the steward for the walking skeleton session.  
 **Who:** All team members.  
 **Why:** Every member serves as code steward at least once.
+
+## 2026-11-28 — Code steward: Brian
+
+**What:** Brian takes over the code steward role from Eddy after PR #27. 
+**Who:** All team members.  
+**Why:** Every member records as code steward at least once.
