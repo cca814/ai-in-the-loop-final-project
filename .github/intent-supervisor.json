@@ -1,0 +1,17 @@
+{
+  "reviewer_min_level": 4,
+  "block_min_level": 5,
+  "review_inconclusive": true,
+  "block_inconclusive": false,
+  "default_owners": ["EddyLai228"],
+  "path_owners": {
+    "slide-generator/*": ["EddyLai228", "yehray7217"],
+    "docs/slide-generator.md": ["EddyLai228", "yehray7217"],
+    "scripts/*": ["cca814", "Lin-shao-an"],
+    ".github/*": ["cca814", "Lin-shao-an"],
+    "docs/intent-supervisor.md": ["cca814", "Lin-shao-an"]
+  },
+  "dimension_owners": {},
+  "max_files_per_key": 10,
+  "ignore_keys": []
+}
