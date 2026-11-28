@@ -105,3 +105,14 @@ jobs:
     with:
       checklist-sha: ${{ needs.first_stage.outputs.checklist-sha }}
     secrets: inherit
+
+  route_impact:
+    needs: detect_significant_changes
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+      statuses: write
+    uses: ./.github/workflows/impact-router.yaml
+    with:
+      report-run-id: ${{ github.run_id }}
