@@ -5,7 +5,7 @@
 
 **What this is not.** It is not a list of things to finish. If you only complete Parts 1 to 4, that is a good session. Your teamwork during these 75 minutes matters more than how much code you end up with.
 
-**When.** First of the two team sessions, before merge day and before you submit CP2: by **[DATE]**. Pick a time when all four of you can be together, in the same room or on one call where you can share a screen.
+**When.** First of the two team sessions, before merge day and before you submit CP2: by 2026/11/28. Pick a time when all four of you can be together, in the same room or on one call where you can share a screen.
 
 **Already have something running?** Good. Part 2 has a route for you: you trace the path together, then build the next thin slice.
 
@@ -55,7 +55,7 @@ If they did not match, that is a useful finding. Write down the difference you h
 **1. Draw the path (3 min).** On a whiteboard, paper or shared screen, draw the shortest path from **what the user gives the tool** to **what the tool gives back**. Three to five boxes is plenty.
 
 ```
-[合併的 PR] → [Intent Supervisor 產生 Project State] → [POST /states 存進 Firestore] → [報告頁讀取 state，LLM 寫出 report.md] → [slides.md 和 Slidev 簡報]
+[PR opened: Intent Supervisor checks for significant changes] → [PR merged] → [Intent Supervisor builds the Project State and a new checklist] → [Project State stored in DB with POST /states] → [Report page reads the state; the LLM writes report.md] → [slides.md and the Slidev presentation]
 ```
 
 **2. Check where you are.** *Can we do our main task from start to finish today, on one machine, without faking anything?*
@@ -69,24 +69,26 @@ If they did not match, that is a useful finding. Write down the difference you h
 
 **Our goal for today** (one example, going in as ____, coming out as ____; or, Route 2: the slice we chose):
 
->> One example, going in as the snapshot `gh-run-1001.json` submitted to `POST /api/projects/demo-app/states`, coming out as a `report.md` shown on the report page, generated from the state read back from Firestore. The Intent Supervisor's Markdown `content` is faked with a fixed text.
+> We will complete two pieces:
+>
+> 1. **Add a reviewer automatically:** one example, going in as a pull request whose significant change score is higher than a predefined threshold, coming out as a reviewer added to that pull request.
+> 2. **Read the Project State from the database:** one example, going in as a stored snapshot, coming out as the Project State returned by `GET /api/projects/{projectId}/state`.
 
 **3. Split the building (with the hand-offs agreed).** Give each person, or each pair, **one building task**: usually one box, or one connection between boxes. Before anyone starts, agree **what each piece receives and returns** (for example "the model step receives the ticket text and returns `{category, summary}`"). This is what lets the pieces connect in Part 3.
 
 | Person or pair | Building task | Receives | Returns | Branch name |
 |---|---|---|---|---|
-| | | | | |
-| | | | | |
-| | | | | |
-| | | | | |
+| Brian and Aron | Add reviewer for the PR that is detected containing the siginificant changes by AI | The siginificant change score | Add new reviewer to PR | brian/intent-supervisor-stage2 |
+| Ray and Eddy | implement API | API request | POST project state | implementation-backend-api |
 
 **Route 2 only: boxes only their author could explain** (these become a pairing or review task after today):
 
-> 
+> N/A — we took Route 1
 
 **Things we are leaving out on purpose today:**
 
->A real Intent Supervisor run: the Markdown `content` is a fixed text.
+> - Generating the Project State from the Intent Supervisor: the snapshot is submitted by hand with `gh-run-1001.json`.
+> - Generating `report.md` and slides on the report page: today the page only reads and shows the state.
 
 ---
 
@@ -101,18 +103,18 @@ If they did not match, that is a useful finding. Write down the difference you h
 
 | Piece | Built by | Explained by | Connected? (yes / with a fix / not yet) | What we had to fix at the connection |
 |---|---|---|---|---|
-| | | | | |
-| | | | | |
-| | | | | |
-| | | | | |
+| Auto reviewer step in the detector workflow | Brian, Aron | Eddy | yes | None |
+| Report page reads GET /state | Ray, Eddy | Aron | yes | None |
 
 **Where did it first run end to end?** (a time, or "not yet")
 
-> 
+>> 11/29 00:30, when the report page showed the demo-app Project State and the skeleton PR got a reviewer.
 
 **What did we fake or stub?** (it is fine to fake things; write them down so you do not forget)
 
-> 
+> - The Project State was submitted by hand with `curl` and `schemas/examples/gh-run-1001.json`, instead of by the Intent Supervisor after a merge.
+> - The Markdown `content` in that snapshot is a fixed example text, not generated from the repository.
+> - The reviewer is a fixed GitHub user set in the `SIGNIFICANT_CHANGE_REVIEWER` repository variable.
 
 ---
 
