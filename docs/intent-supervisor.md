@@ -14,7 +14,7 @@ The core workflow should:
 
 - Summarize what a PR changes and explain how it relates to existing specifications and decisions.
 - Identify potentially significant changes with evidence that a reviewer can inspect.
-- Assess broader impact after an initial reviewer approves the changes.
+- Assess broader codebase impact before the PR is merged.
 - Compare AI impact scores with author self-assessments and flag meaningful discrepancies.
 - Obtain acknowledgment from affected downstream teams when configured thresholds are met.
 - Route significant changes to the appropriate people through notifications, additional review, or a merge block.
@@ -89,6 +89,7 @@ Suggested fields:
 - **Alignment with specifications:** Whether the change appears consistent with existing requirements and decisions.
 - **Potential concerns:** Possible downstream effects or unresolved discrepancies.
 - **Evidence and limitations:** File references, supporting excerpts where useful, and unavailable context.
+- **Dependency names:** Diff-verified names other code may reference, used by Stage 2 to find dependent code (§4.3).
 
 ### 3.5 Output: Completed Significant Criteria Checklist
 
@@ -119,7 +120,55 @@ TBD
 
 ## 4. Stage 2: Impact Assessment and Routing
 
-TBD
+The first version of Stage 2 adds reviewers and blocks the merge. It reuses the Stage 1 impact score and inspects the codebase on `main`: it searches for code that references the names Stage 1 extracted from the diff, so the owners of that dependent code are requested too (§4.3). It does not yet send that code to the AI to refine the score, and it does not notify a supervisor outside GitHub.
+
+### 4.1 Trigger
+
+Routing does not wait for the first approval. The information it needs is available as soon as Stage 1 finishes, and requesting owners late wastes a review round. Each routing action therefore has its own trigger:
+
+| Action                          | Trigger                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Add reviewer                    | After Stage 1 on every PR open or update, as a job in the Stage 1 pipeline.                          |
+| Codebase search for dependents  | With "Add reviewer", on every PR open or update. Names come from the Stage 1 AI call; the search uses `git grep` only (§4.3). |
+| Block merge                     | Re-evaluated after every Stage 1 run and on every review submitted (except comments) or dismissed.  |
+| AI review of dependent code     | Not implemented. Planned for `ready_for_review` or the first approval, because it costs AI tokens.   |
+
+Routing reads the Stage 1 `report.json` for the PR's current head commit. Only approvals of the current head commit count, so every push re-evaluates the gate without needing stale approvals to be dismissed. Reviewers are requested only after pushes; review events only re-check the gate, so an owner who requests changes is not immediately re-requested.
+
+### 4.2 Routing Rules
+
+Routing is configured in `.github/intent-supervisor.json`, read from `main` so a PR cannot change its own routing.
+
+| Setting              | Default | Meaning                                                              |
+| -------------------- | ------- | -------------------------------------------------------------------- |
+| `reviewer_min_level` | 4       | Highest matched level at which owners are requested as reviewers.    |
+| `block_min_level`    | 5       | Highest matched level at which the merge is blocked.                 |
+| `review_inconclusive`| true    | Request owner review when the Stage 1 result is inconclusive.        |
+| `block_inconclusive` | false   | Block the merge when the Stage 1 result is inconclusive.             |
+| `path_owners`        |         | Glob pattern to GitHub logins.                                       |
+| `dimension_owners`   |         | Dimension keyword (case-insensitive substring) to GitHub logins.     |
+| `default_owners`     |         | Fallback owners, normally the current code steward.                  |
+
+Direct owners are resolved in this order: owners of the evidence paths and dimensions of matched items at or above `reviewer_min_level`; otherwise owners of all changed files; otherwise `default_owners`. The PR author is never an owner.
+
+### 4.3 Dependent Owners
+
+The router also requests the owners of code that depends on the change, which the diff alone cannot show. Only the first step uses AI, and it runs inside the existing Stage 1 call; the rest is deterministic code. The code contains no language- or framework-specific rules, so the same flow works in other projects.
+
+1. **Extract names (Stage 1, AI).** In the same call that completes the checklist, the AI returns up to 20 `dependency_keys`: names, strings, or contracts changed by the diff that other files may reference, such as functions, types, API routes, schema fields, config keys, or events. Each key must appear in a quoted diff excerpt from a changed file. Keys that fail this check are dropped and recorded in `dependency_key_notes`; they never fail the Stage 1 report or change its score. The verified keys are listed in the Stage 1 report and stored in `report.json`.
+2. **Add a baseline and filter (Stage 2).** The module names of changed files, including the old names of renamed files, are added so the search still works when the AI returns nothing or the diff was truncated. Names in `ignore_keys` or shorter than 3 characters are dropped.
+3. **Search (Stage 2).** Each name is searched in the `main` checkout with `git grep -w`, skipping files the PR changes, lock files, and `checklists/`. A name found in more than `max_files_per_key` files (default 10) is skipped as too common; this adapts to each project instead of relying on a fixed stopword list.
+4. **Map and report (Stage 2).** Matching files are mapped to owners with `path_owners`, excluding the PR author and the direct owners. The Stage 2 PR comment lists dependent owners separately from direct owners, with the name, reason, and file and line of each match, and the names skipped as too common.
+
+Dependent owners are requested together with direct owners when the review threshold is met, and their approval also unblocks the merge. A match is a lead, not proof of impact: names can collide, and dynamic references are missed. Because the names come from AI, they can differ between runs; the module-name baseline keeps the result stable for every changed file.
+
+A blocked PR is unblocked when any direct or dependent owner approves the current head commit. Blocking is enforced by the `intent-supervisor/impact` commit status, which must be marked as a required status check in branch protection for `main`. A missing or outdated Stage 1 report also sets a failing status; rerun the job after Stage 1 finishes.
+
+### 4.4 Not Yet Implemented
+
+- Sending the dependent code found in §4.3 to the AI to refine the Stage 1 score.
+- Supervisor notification by email or other channels outside GitHub.
+- Author self-assessment comparison and downstream `/impact ack`.
 
 ## 5. Integration with the Slide Generator
 
