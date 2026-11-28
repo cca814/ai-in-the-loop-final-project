@@ -67,3 +67,10 @@ We also listed candidate features to consider after the core pipeline works:
 **Outcome:** Eddy reviews the open pull requests to `main` and leaves at least one real comment before approving each. On #25, Eddy asked whether the next PR will replace the mock data and mock API with the real API and Firestore, and how the report agent should read the Project State after #19 replaces the structured fields with a Markdown `content` field. The role then passes to the steward for the walking skeleton session.  
 **Who:** All team members.  
 **Why:** Every member serves as code steward at least once.
+
+## 2026-11-28 — Slide Generator scope and PR split
+
+**What:** Agreed to simplify the Slide Generator website and split the work from [PR #25](https://github.com/cca814/ai-in-the-loop-final-project/pull/25).
+**Outcome:** Use English for the website. Keep `report.md` editable and `slides.md` read-only. Disable public GitHub repository URL loading and on-demand repository reading. Deliver two PRs: the frontend first, followed by backend API integration. For now, the backend PR will support only Gemini and remove the other provider implementations and settings; this does not rule out adding providers later.
+**Who:** All team members.
+**Why:** To reduce UI complexity and review the frontend and backend changes separately.
