@@ -1,0 +1,36 @@
+.reports-workspace { min-height: 100vh; padding: 40px clamp(18px, 4vw, 64px); background: #f3f5f8; color: #182637; font-family: Arial, sans-serif; }
+.reports-header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 28px; }
+.reports-brand, .reports-eyebrow { font-size: .75rem; font-weight: 700; letter-spacing: .13em; color: #526b86; margin: 0 0 10px; }
+.reports-header h1 { font-size: 2rem; letter-spacing: -.04em; font-weight: 700; margin: 0 0 10px; }
+.reports-subtitle { font-size: 1rem; color: #596b7e; margin: 0; }
+.reports-banner { font-size: .875rem; line-height: 1.6; background: #e9eef4; border-left: 3px solid #6a87a4; padding: 12px 16px; margin-bottom: 24px; }
+.reports-grid { display: grid; grid-template-columns: minmax(235px, .8fr) minmax(0, 2.2fr); gap: 20px; align-items: stretch; }
+.reports-card { background: white; border: 1px solid #dde3eb; border-radius: 14px; padding: 24px; min-width: 0; box-shadow: 0 3px 10px #1a354708; }
+.reports-card h2 { font-size: 1.2rem; font-weight: 700; margin: 0 0 22px; }
+.reports-label { display: block; font-size: .875rem; font-weight: 600; margin: 0 0 9px; }
+.reports-card select, .reports-card textarea { width: 100%; border: 1px solid #bac6d4; border-radius: 7px; background: #fff; color: #182637; padding: 12px; font: inherit; font-size: .9rem; line-height: 1.6; box-sizing: border-box; }
+.reports-card textarea { resize: vertical; }
+.reports-summary { display: flex; flex-direction: column; gap: 8px; margin-top: 24px; }
+.reports-summary strong { font-size: 1.15rem; }
+.reports-summary span { font-size: .875rem; color: #596b7e; overflow-wrap: anywhere; }
+.reports-details { margin-bottom: 22px; font-size: .875rem; }.reports-details summary { cursor: pointer; color: #234e7b; }.reports-details pre { max-height: 300px; overflow: auto; font-size: .8rem; margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.reports-primary, .reports-secondary { cursor: pointer; border-radius: 7px; font-size: .9rem; font-weight: 600; padding: 11px 15px; border: 1px solid transparent; }
+.reports-primary { width: 100%; background: #234e7b; color: white; margin-top: 14px; }.reports-primary:hover:not(:disabled) { background: #183b61; }
+.reports-secondary { background: white; color: #234e7b; border-color: #b9c9d9; white-space: nowrap; }
+.reports-card button:disabled { opacity: .45; cursor: not-allowed; }
+.reports-sectionHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.reports-editorCard { display: flex; flex-direction: column; }.reports-card .reports-editor { flex: 1; min-height: 520px; font-family: Consolas, monospace; font-size: .875rem; background: #fcfdff; }
+.reports-caption { font-size: .8rem; color: #64758a; margin: 10px 0 0; line-height: 1.6; }
+.reports-status { font-size: .875rem; color: #596b7e; margin-top: 20px; line-height: 1.6; }.reports-error { color: #8c2532; background: #ffedf0; border: 1px solid #efbdc6; padding: 14px; margin-top: 12px; border-radius: 8px; line-height: 1.6; }
+.reports-slidesSection { margin-top: 24px; }
+.reports-confirm { display: flex; align-items: center; gap: 10px; margin: 20px 0 4px; font-size: .9rem; }
+.reports-confirm input { width: 18px; height: 18px; accent-color: #234e7b; }
+.reports-exportActions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 14px 0; }
+.reports-exportActions .reports-primary { width: auto; margin: 0; }
+.reports-stale { color: #88551b; margin-top: 14px; font-size: .9rem; }
+.reports-snapshotLabel { margin-top: 16px; }
+@media (max-width: 680px) { .reports-workspace { padding: 24px 16px; }.reports-header { flex-direction: column; gap: 16px; }.reports-header h1 { font-size: 1.65rem; }.reports-grid { grid-template-columns: 1fr; }.reports-card { padding: 20px; }.reports-sectionHeader { flex-wrap: wrap; margin-bottom: 16px; }.reports-card .reports-editor { min-height: 420px; } }
+.reports-card input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; border: 1px solid #bac6d4; border-radius: 7px; padding: 12px; background: white; color: #182637; }
+.reports-card :is(input, button, select, textarea):focus-visible { outline: 3px solid #8ab8eb; outline-offset: 3px; }
+.reports-exportActions select { width: auto; max-width: 100%; }
+@media (max-width: 680px) { .reports-exportActions { align-items: stretch; flex-direction: column; } }
